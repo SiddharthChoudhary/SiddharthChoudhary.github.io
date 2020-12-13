@@ -107,3 +107,5 @@ function t() {
     clearInterval(timer);
   }
 }
+
+window.location.href = "https://schoud2.wixsite.com/portfolio";
