@@ -1,5 +1,0 @@
-<span id="a">Siddharth@Choudhary</span>:<span id="b">~</span><span id="c">$</span> cd Siddharth_Choudhary/<!-- kjsdfhkjdhsfkjdshfkj -->About_Me
-<span id="a">coder@nerve</span>:<span id="b">~</span><span id="c">$</span> cat <!-- kjsdfhkjdhsfkjdshfkj -->who_is_Sid.txt<br/><br/>
-Welcome, It's nice to meet you, "<span id="k">You made it, Now HOLD ON......</span>". <!-- sjkfhskjf -->
-
-<p>Cheers!</p>
