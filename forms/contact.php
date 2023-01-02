@@ -17,6 +17,7 @@
 
   $contact = new PHP_Email_Form;
   $contact->ajax = true;
+  
   $contact->to = $receiving_email_address;
   $contact->from_name = $_POST['name'];
   $contact->from_email = $_POST['email'];
@@ -25,9 +26,9 @@
   // Uncomment below code if you want to use SMTP to send emails. You need to enter your correct SMTP credentials
   
   $contact->smtp = array(
-    'host' => 'smtp-relay.sendinblue.com',
-    'username' => 'sidchoudhary.in@gmail.com',
-    'password' => 'Youcantthink@1',
+    'host' => 'example.com',
+    'username' => 'example',
+    'password' => 'pass',
     'port' => '587'
   );
 
