@@ -1373,3 +1373,30 @@ section {
 #footer .credits {
   font-size: 13px;
 }
+
+.download_resume { 
+  border:none;
+  border:solid 2px #ffb727;
+  border-radius: 5px;
+  background: rgba(255, 255, 255,0);
+  font-size: 25px;
+}
+
+.download_resume a{
+  color:white
+}
+
+.download_resume:hover {
+  background:rgb(189, 189, 182);
+  color:white; 
+}
+
+.download_resume_container{
+background: url("../img/hero-bg.jpg") top center no-repeat;
+  background-size: cover;
+  color: #fff;
+  font-size: 14px;
+  text-align: center;
+  padding: 80px 0;
+  position: relative;
+}
