@@ -1,0 +1,5 @@
+/* Reset Vite boilerplate styles to avoid interfering with site design */
+html, body {
+  margin: 0;
+  padding: 0;
+}
