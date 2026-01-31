@@ -261,10 +261,7 @@ function App() {
                   <a href="https://www.linkedin.com/in/siddharth-choudhary-440102b8/">LinkedIn</a>
                 </li>
                 <li>
-                  <a href="https://www.facebook.com/siddharth.choudhary.9210">Facebook</a>
-                </li>
-                <li>
-                  <a href="https://leetcode.com/siddharthchoudhary41/">Leetcode</a>
+                  <a href="https://leetcode.com/u/SidStillLearning/">Leetcode</a>
                 </li>
                 <li>
                   <a href="https://stackoverflow.com/users/5972784/siddharth-choudhary">Stack Overflow</a>
@@ -284,7 +281,7 @@ function App() {
       <section id="hero">
         <div className="hero-container">
           <h1>Siddharth Choudhary</h1>
-          <h2>I am a Software Engineer with 6+ years of experience.</h2>
+          <h2>Senior Software Engineer with 7+ years of experience.</h2>
           <a href="#about" className="btn-scroll scrollto" title="Scroll Down">
             <i className="bx bx-chevron-down"></i>
           </a>
@@ -298,8 +295,13 @@ function App() {
               <span>About Me</span>
               <h2>About Me</h2>
               <p>
-                I am currently working as a Senior Software Developer at Oracle in the OCI organization. In my current and previous roles, I have worked with multiple programming languages (listed below on this page), built and deployed infrastructure pipelines from scratch, scaled systems, and managed CI/CD pipelines. Previously, I have worked with companies such as AWS, ADP, and a couple of startups as well.
+                Senior Software Engineer with 7+ years building scalable cloud infrastructure and enterprise applications. SME in Oracle Cloud Infrastructure with strong experience in Python, Java, and DevOps tooling (AWS, Kubernetes, Jenkins). I lead cross-team initiatives, mentor engineers, and deliver high-impact systems that improve resilience, performance, and customer adoption.
               </p>
+              <div className="mt-3">
+                <a className="btn btn-sm btn-warning" href="/pdf/Siddharth_Choudhary_Resume.pdf" download>
+                  Download Latest Resume
+                </a>
+              </div>
             </div>
             <div className="row">
               <div className="image col-lg-4 d-flex align-items-stretch justify-content-center justify-content-lg-start"></div>
@@ -336,9 +338,9 @@ function App() {
                     <div className="col-md-6 mt-5 d-md-flex align-items-md-stretch">
                       <div className="count-box">
                         <i className="bi bi-clock" style={{ color: '#2cbdee' }}></i>{' '}
-                        <span data-purecounter-start="0" data-purecounter-end="5" data-purecounter-duration="1" className="purecounter"></span>
+                        <span data-purecounter-start="0" data-purecounter-end="7" data-purecounter-duration="1" className="purecounter"></span>
                         <p>
-                          <strong>Years of experience.</strong> Worked in USA professionally, not including internships
+                          <strong>Years of experience.</strong> Worked in the USA professionally, not including internships
                         </p>
                       </div>
                     </div>
@@ -481,7 +483,7 @@ function App() {
                   <h4>Siddharth Choudhary</h4>
                   <p>
                     <em>
-                      Senior Software Engineer with 6+ years of professional experience in commercial application development. Leading projects, engaging in customer meetings by accommodating the incoming requests; Designing system architectures, contributing to and building CI/CD pipelines for the seamless integration of deployments; Qualifications also include completion of Masters in Computer Science.
+                      Senior Software Engineer with 7+ years of experience building scalable cloud infrastructure and enterprise applications. Proven SME in Oracle Cloud Infrastructure with expertise in Python, Java, and DevOps tooling (AWS, Kubernetes, Jenkins). Strong track record of leading cross-team initiatives, mentoring peers, and delivering high-impact systems.
                     </em>
                   </p>
                   <p></p>
@@ -495,7 +497,7 @@ function App() {
                     <em>Stevens Institute of Technology, Hoboken, NJ</em>
                   </p>
                   <p>
-                    Graduated with a 3.8 GPA with amazing coursework such as: Advanced Programming in the Unix Env., Distributed Systems, Advanced Web Programming, Advanced Algorithms
+                    Graduated with a 3.8 GPA. Key coursework: NLP, Advanced Programming in the Unix Env., Distributed Systems, Advanced Algorithms.
                   </p>
                 </div>
                 <div className="resume-item">
@@ -531,18 +533,28 @@ function App() {
               <div className="col-lg-6">
                 <h3 className="resume-title">Professional Experience</h3>
                 <div className="resume-item">
+                  <h4>Oracle Cloud Infrastructure</h4>
+                  <h5>Sep 2024 - Present</h5>
+                  <p>
+                    <em>Senior Software Engineer, Nashville, TN</em>
+                  </p>
+                  <ul>
+                    <li>Mentored 4 junior engineers across teams, reducing production issue resolution time by 30% and improving stability.</li>
+                    <li>Built an OCI AI Agent prototype to scan historical Jira tickets and suggest workarounds or SMEs for faster resolution.</li>
+                    <li>Led 3 FusionApps projects from design to deployment, boosting customer engagement by 20% via enhanced user features.</li>
+                  </ul>
+                </div>
+                <div className="resume-item">
                   <h4>Oracle</h4>
-                  <h5>Jan 2022 - Present</h5>
+                  <h5>Jan 2022 - Sep 2024</h5>
                   <p>
                     <em>Software Developer 2, Nashville, TN</em>
                   </p>
-                  <p></p>
                   <ul>
                     <li>Deploying infrastructure using Terraform in OCI to increase the migration capacity from the older Gen infrastructure.</li>
                     <li>Collaborated with other teams within Oracle, as a cross-team effort, to build and deploy Devops-UX using React-js, Node-js.</li>
                     <li>Providing on-call support, maintaining the fault tolerance and scaling out of our core features to the distributed servers within OCI.</li>
                   </ul>
-                  <p></p>
                 </div>
                 <div className="resume-item">
                   <h4>Nextiles</h4>
@@ -550,13 +562,11 @@ function App() {
                   <p>
                     <em>Lead Software Engineer, Brooklyn, NY</em>
                   </p>
-                  <p></p>
                   <ul>
                     <li>Built cloud solutions and CI/CD pipelines for the entire backend in AWS environment (S3, DDB, Codepipeline).</li>
                     <li>Incorporated customer needs, attended client meetings and worked closely with their development teams to help with the integration with our SDK.</li>
                     <li>Built iOS and Android SDKs for BLE devices from scratch, using Kotlin and Swift UI and intgrated with AWS services.</li>
                   </ul>
-                  <p></p>
                 </div>
                 <div className="resume-item">
                   <h4>AWS</h4>
@@ -564,13 +574,11 @@ function App() {
                   <p>
                     <em>Software Development Engineer, Portland, OR</em>
                   </p>
-                  <p></p>
                   <ul>
                     <li>Integrated our services with the Tagging team at AWS to provide tagging features to the resources.</li>
                     <li>Built Infrastructure pipeline for product API layers, control flow layers, and end to end integration tests for the service.</li>
                     <li>Worked on multiple projects and reviewed the system design changes in a very new service launch of AWS.</li>
                   </ul>
-                  <p></p>
                 </div>
                 <div className="resume-item">
                   <h4>ADP</h4>
@@ -578,12 +586,10 @@ function App() {
                   <p>
                     <em>Associate Application Developer, Roseland, NJ</em>
                   </p>
-                  <p></p>
                   <ul>
                     <li>Powered CEH product by building integral modules, automated testing using Expressjs/GraphQL backend &amp; React front-end.</li>
                     <li>Built several UI modules, which utilize MongoDB database and contributed to a microservices based architecture.</li>
                   </ul>
-                  <p></p>
                 </div>
                 <div className="resume-item">
                   <h4>Samy Web Technologies</h4>
@@ -591,12 +597,10 @@ function App() {
                   <p>
                     <em>Full Stack Developer, Bhilwara, Rajasthan, India</em>
                   </p>
-                  <p></p>
                   <ul>
                     <li>Created the Checkout flow, Add to cart, Payment modules (using Paypal integration) for the Scubaya project.</li>
                     <li>Reduced the extra consuming time as compared to a regular search by implementing an optimized indexing search.</li>
                   </ul>
-                  <p></p>
                 </div>
                 <div className="resume-item">
                   <h4>ReadyBytes Software Labs</h4>
@@ -604,12 +608,10 @@ function App() {
                   <p>
                     <em>Full Stack Developer, Bhilwara, Rajasthan, India</em>
                   </p>
-                  <p></p>
                   <ul>
                     <li>Contributed and maintained CMS software solutions to handle the back end of an e-service platform.</li>
                     <li>Introduced new cloud services for more user interaction which increased the overall sales by nearly 30%.</li>
                   </ul>
-                  <p></p>
                 </div>
               </div>
             </div>
@@ -783,9 +785,6 @@ function App() {
                       <i className="bx bx-share-alt"></i>
                       <h3>Social Profiles</h3>
                       <div className="social-links">
-                        <a href="https://www.facebook.com/siddharth.choudhary.9210" className="facebook">
-                          <i className="bi bi-facebook"></i>
-                        </a>{' '}
                         <a href="https://github.com/SiddharthChoudhary" className="github">
                           <i className="bi bi-github"></i>
                         </a>{' '}
