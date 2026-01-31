@@ -6,6 +6,7 @@ import PureCounter from '@srexi/purecounterjs'
 import 'waypoints/lib/noframework.waypoints.js'
 
 function App() {
+  const resumeHref = `${import.meta.env.BASE_URL}pdf/Siddharth_Choudhary_Resume.pdf`
   useEffect(() => {
     const select = (el, all = false) => {
       el = el.trim()
@@ -298,7 +299,7 @@ function App() {
                 Senior Software Engineer with 7+ years building scalable cloud infrastructure and enterprise applications. SME in Oracle Cloud Infrastructure with strong experience in Python, Java, and DevOps tooling (AWS, Kubernetes, Jenkins). I lead cross-team initiatives, mentor engineers, and deliver high-impact systems that improve resilience, performance, and customer adoption.
               </p>
               <div className="mt-3">
-                <a className="btn btn-sm btn-warning" href="/pdf/Siddharth_Choudhary_Resume.pdf" download>
+                <a className="btn btn-sm btn-warning" href={resumeHref} download target="_blank" rel="noopener noreferrer">
                   Download Latest Resume
                 </a>
               </div>
