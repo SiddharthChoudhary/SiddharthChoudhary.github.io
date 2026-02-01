@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blog | OCI AI Agent Prototype</title>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Raleway:300,300i,400,400i,500,500i,600,600i,700,700i|Satisfy" rel="stylesheet" />
+    <link rel="icon" href="../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../img/apple-touch-icon.png" />
+    <link rel="stylesheet" href="../../css/style.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+    <style>
+      main { padding: 80px 0; }
+      .blog-hero {background:url('../../img/hero-bg.jpg') top right/cover no-repeat; position:relative;}
+      .blog-hero::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.65)}
+      .blog-hero .inner{position:relative;color:#fff;padding:80px 0;text-align:center}
+      .blog-meta{display:flex;gap:12px;justify-content:center;color:#eee;font-size:14px;margin-top:8px}
+      .content{font-size:1.08rem;line-height:1.85;color:#3b434a}
+      .content img{max-width:100%;height:auto;border-radius:6px}
+      .content h2,.content h3{margin-top:1.6rem;margin-bottom:.8rem}
+      .content blockquote{border-left:4px solid #ffb727;padding:.5rem 1rem;color:#5d6a75;background:#fff8ea;border-radius:4px}
+      pre{background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:6px;overflow:auto}
+      code{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace}
+      .cover{width:100%;max-height:360px;object-fit:cover;border-radius:8px;margin:1rem 0 1.25rem}
+    </style>
+  </head>
+  <body>
+    <header class="blog-hero">
+      <div class="inner">
+        <div class="container">
+          <h1>OCI AI Agent Prototype</h1>
+          <div class="blog-meta">
+            <span>Jan 2026</span>
+            <span>•</span>
+            <span>~ 3 min read</span>
+            <span>•</span>
+            <span>AI, Retrieval, Jira</span>
+          </div>
+          <p class="mb-0"><a href="../../" style="color:#ffb727">Home</a> / Blogs / OCI AI Agent</p>
+        </div>
+      </div>
+    </header>
+    <main>
+      <div class="container">
+        <div class="row justify-content-center">
+          <div class="col-lg-8">
+            <article class="content">
+              <img class="cover" src="../../img/portfolio/oci-new-logo-scaled.jpeg" alt="OCI AI Agent cover" />
+              <p>
+                A prototype that scans historical Jira tickets to suggest workarounds or route to SMEs, aimed at faster issue
+                resolution. Below is a lightweight architecture and a few notes on evaluation.
+              </p>
+              <h2>High-level Architecture</h2>
+              <p>
+                Tickets are indexed into a vector store with minimal PII. A retrieval component selects the top-k similar tickets
+                and summarizes prior fixes. The agent then proposes: (a) likely workaround, (b) candidate service owners/SMEs,
+                and (c) confidence signals such as frequency-of-success for similar fixes.
+              </p>
+              <pre><code>// pseudo-code
+query = normalize(input)
+neighbors = vectorStore.search(query, k=8)
+context = summarize(neighbors)
+answer = llm.generate(prompt(context, query))
+return answer, diagnostics</code></pre>
+              <h3>Evaluation</h3>
+              <blockquote>
+                Retrieval quality drives outcome quality. Instrument recall@k and track human accept/reject to continuously tune.
+              </blockquote>
+              <p>
+                For production, add safety rails (redaction, grounding checks), and set up a feedback loop to capture SME
+                corrections.
+              </p>
+              <p class="mt-4">
+                <a class="btn btn-outline-secondary" href="../../">← Back to site</a>
+              </p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </main>
+    <footer id="footer">
+      <div class="container">
+        <div class="copyright">&copy; Copyright <strong><span>Siddharth Choudhary</span></strong>. All Rights Reserved</div>
+      </div>
+    </footer>
+  </body>
+  </html>

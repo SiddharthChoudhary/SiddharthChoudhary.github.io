@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import BlogSlider from './components/BlogSlider.jsx'
 import Isotope from 'isotope-layout'
 import GLightbox from 'glightbox'
 import Swiper from 'swiper/bundle'
@@ -6,6 +7,7 @@ import PureCounter from '@srexi/purecounterjs'
 import 'waypoints/lib/noframework.waypoints.js'
 
 function App() {
+  const [showBlogs, setShowBlogs] = useState(false)
   const resumeHref = `${import.meta.env.BASE_URL}pdf/Siddharth_Choudhary_Resume.pdf`
   useEffect(() => {
     const select = (el, all = false) => {
@@ -166,23 +168,49 @@ function App() {
     let portfolioIsotope
     const onPortfolioLoad = () => {
       const portfolioContainer = select('.portfolio-container')
+      const blogWrap = select('#blog-slider-wrap')
       if (portfolioContainer) {
         portfolioIsotope = new Isotope(portfolioContainer, { itemSelector: '.portfolio-item' })
+
+        // Default: show grid, hide blogs
+        setShowBlogs(false)
+        if (blogWrap) blogWrap.classList.add('d-none')
+
         const filters = select('#portfolio-flters li', true)
+        const applyFilter = (target) => {
+          filters.forEach((el) => el.classList.remove('filter-active'))
+          target.classList.add('filter-active')
+          const f = target.getAttribute('data-filter') || '*'
+          if (f === '.filter-blog') {
+            setShowBlogs(true)
+            // Hide grid while Blogs active
+            portfolioContainer.classList.add('d-none')
+            // Kick Swiper updates after mount
+            try {
+              setTimeout(() => window.dispatchEvent(new Event('blog-slider-visible')), 0)
+              setTimeout(() => window.dispatchEvent(new Event('blog-slider-visible')), 60)
+            } catch (_) {}
+          } else {
+            setShowBlogs(false)
+            portfolioContainer.classList.remove('d-none')
+            portfolioIsotope.arrange({ filter: f })
+          }
+        }
+
         on(
           'click',
           '#portfolio-flters li',
           function (e) {
             e.preventDefault()
-            filters.forEach((el) => el.classList.remove('filter-active'))
-            this.classList.add('filter-active')
-            portfolioIsotope.arrange({ filter: this.getAttribute('data-filter') || '*' })
+            applyFilter(this)
           },
           true
         )
       }
     }
     window.addEventListener('load', onPortfolioLoad)
+    // Ensure handlers are ready even if load already fired (HMR/dev)
+    onPortfolioLoad()
 
     // Portfolio lightbox
     const portfolioLightbox = GLightbox({ selector: '.portfolio-lightbox' })
@@ -250,6 +278,7 @@ function App() {
                 Portfolio
               </a>
             </li>
+            
             <li className="dropdown">
               <a href="#">
                 <span>Social Links</span> <i className="bi bi-chevron-down"></i>
@@ -633,7 +662,15 @@ function App() {
               <li data-filter=".filter-professional">Professional</li>
               <li data-filter=".filter-blog">Blogs</li>
             </ul>
-
+            {/* Blog slider wrapper (hidden by default; shown when Blogs filter active) */}
+            <div id="blog-slider-wrap" className={`mb-4 ${showBlogs ? '' : 'd-none'}`} style={{ minHeight: '220px' }}>
+              {showBlogs && (
+                <>
+                  <h3 className="text-center" style={{ marginBottom: '10px' }}>Blogs</h3>
+                  <BlogSlider />
+                </>
+              )}
+            </div>
             <div className="row portfolio-container">
               <div className="col-lg-4 col-md-6 portfolio-item filter-blog">
                 <div className="portfolio-img">

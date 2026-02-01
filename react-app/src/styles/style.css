@@ -1400,3 +1400,18 @@ body {
     padding: 80px 0;
     position: relative;
   }
+
+  /* --------------------------
+   * Blog slider helpers
+   * ------------------------- */
+  .blog-slider { padding: 10px 0; }
+  /* Ensure slides and cards stretch evenly */
+  .blog-slider .swiper-wrapper { align-items: stretch; }
+  .blog-slider .swiper-slide { display: flex; height: auto; }
+  .blog-slider .card { display:flex; flex-direction:column; height: 100%; border: 1px solid #eee; box-shadow: 0 6px 16px rgba(0,0,0,0.06); transition: transform .2s ease, box-shadow .2s ease; }
+  .blog-slider .card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,0.09); }
+  .blog-slider .card-img-top { height: 180px; object-fit: cover; }
+  .blog-slider .card-body { padding: 14px; }
+  .blog-slider .card-title { font-size: 1rem; margin-bottom: .35rem; }
+  .blog-slider .card-text { font-size: .9rem; color: #5d6a75; }
+  .blog-slider .btn { font-size: .85rem; padding: .35rem .6rem; }
