@@ -35,6 +35,13 @@ jobs:
         working-directory: react-app
         run: npm ci
 
+      - name: Sync static assets into Vite public
+        run: |
+          mkdir -p react-app/public/img react-app/public/pdf react-app/public/css
+          if [ -d img ]; then cp -R img/* react-app/public/img/ || true; fi
+          if [ -d pdf ]; then cp -R pdf/* react-app/public/pdf/ || true; fi
+          if [ -d css ]; then cp -R css/* react-app/public/css/ || true; fi
+
       - name: Build
         working-directory: react-app
         run: npm run build
