@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page Not Found</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+      .wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2rem; }
+      a { color: #ffb727; }
+    </style>
+    <script>
+      (function() {
+        // Simple fallback for GitHub Pages: send user to site root.
+        // If this is a nested path like /blogs/oci-ai-agent (no trailing slash),
+        // try with a slash first so that GH Pages can serve /index.html under that folder.
+        var path = window.location.pathname;
+        if (path && !path.endsWith('/') && !path.endsWith('.html')) {
+          window.location.replace(path + '/');
+          return;
+        }
+        // Otherwise, go to the homepage
+        window.location.replace('/');
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="wrap">
+      <div>
+        <h1>Page not found</h1>
+        <p>Redirecting you to the homepage. If you are not redirected, <a href="/">click here</a>.</p>
+      </div>
+    </div>
+  </body>
+  </html>
