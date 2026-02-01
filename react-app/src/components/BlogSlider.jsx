@@ -18,7 +18,7 @@ const BlogSlider = () => {
         title: 'OCI AI Agent prototype',
         img: `${baseUrl}img/portfolio/oci-new-logo-scaled.jpeg`,
         excerpt: 'Prototype to scan Jira tickets and suggest workarounds or SMEs for faster issue resolution.',
-        href: `${baseUrl}blogs/oci-ai-agent/index.html`,
+        href: `blogs/oci-ai-agent/`,
       },
     ],
     [baseUrl]
