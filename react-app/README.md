@@ -8,6 +8,18 @@ Deployment notes (GitHub Pages)
 - The workflow builds from react-app and uploads dist as the Pages artifact.
 - Static assets and blogs/* are copied into public during the workflow.
 
+Firebase Analytics
+- Firebase Analytics is wired in `src/firebaseAnalytics.js`.
+- Copy `.env.example` to `.env` and set your Firebase web app values:
+  - `VITE_FIREBASE_API_KEY`
+  - `VITE_FIREBASE_AUTH_DOMAIN`
+  - `VITE_FIREBASE_PROJECT_ID`
+  - `VITE_FIREBASE_STORAGE_BUCKET`
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+  - `VITE_FIREBASE_APP_ID`
+  - `VITE_FIREBASE_MEASUREMENT_ID`
+- If these values are missing, analytics initialization is skipped and the site still works normally.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
