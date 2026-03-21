@@ -11,18 +11,43 @@ const BlogSlider = () => {
         title: "In doubt? Entrepreneurs' Acute Acumen",
         img: `${baseUrl}img/portfolio/entrepreneurship.jpeg`,
         excerpt: 'My very first blog. Thoughts on entrepreneurship and decision making.',
-        href: `https://www.linkedin.com/pulse/doubt-entrepreneurs-acute-acumen-siddharth-choudhary`,
+        platformLink: 'https://www.linkedin.com/pulse/doubt-entrepreneurs-acute-acumen-siddharth-choudhary',
+        appPath: `${baseUrl}blogs/entrepreneurship/index.html`,
       },
       {
         slug: 'oci-ai-agent',
         title: 'OCI AI Agent prototype',
         img: `${baseUrl}img/portfolio/oci-new-logo-scaled.jpeg`,
         excerpt: 'Prototype to scan Jira tickets and suggest workarounds or SMEs for faster issue resolution.',
-        href: `blogs/oci-ai-agent/`,
+        appPath: `${baseUrl}blogs/oci-ai-agent/index.html`,
+      },
+      {
+        slug: 'auto-blog-generator-ai-agent',
+        title: 'Auto Blog Generator AI Agent',
+        img: `${baseUrl}img/file.png`,
+        excerpt:
+          'Design notes for an AI agent that turns raw engineering updates into polished publish-ready blog drafts. Still working on it.',
+        appPath: `${baseUrl}blogs/auto-blog-generator-ai-agent/index.html`,
+      },
+      {
+        slug: 'tailor-resume-ai-agent',
+        title: 'Tailor Resume AI Agent',
+        img: `${baseUrl}img/portfolio/GitHub-logo.png`,
+        excerpt:
+          'Agent concept for tailoring resumes to specific job descriptions with measurable impact statements. Still working on it.',
+        appPath: `${baseUrl}blogs/tailor-resume-ai-agent/index.html`,
       },
     ],
     [baseUrl]
   )
+
+  const openBlog = (blog) => {
+    if (blog.platformLink) {
+      window.open(blog.platformLink, '_blank', 'noopener,noreferrer')
+      return
+    }
+    window.location.href = blog.appPath
+  }
 
   useEffect(() => {
     const slider = new Swiper('.blog-slider', {
@@ -69,14 +94,13 @@ const BlogSlider = () => {
               <div className="card-body d-flex flex-column">
                 <h5 className="card-title">{b.title}</h5>
                 <p className="card-text flex-grow-1">{b.excerpt}</p>
-                <a
+                <button
+                  type="button"
                   className="btn btn-warning align-self-start"
-                  href={b.href}
-                  target={/^https?:\/\//.test(b.href) ? '_blank' : undefined}
-                  rel={/^https?:\/\//.test(b.href) ? 'noopener noreferrer' : undefined}
+                  onClick={() => openBlog(b)}
                 >
-                  Read post
-                </a>
+                  {b.platformLink ? 'Read on Platform' : 'Read on Site'}
+                </button>
               </div>
             </div>
           </div>
