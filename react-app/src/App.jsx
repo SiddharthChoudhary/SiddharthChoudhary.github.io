@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import BlogSlider from './components/BlogSlider'
+import PythonScratchpad from './components/PythonScratchpad'
 
 const metrics = [
   { label: 'Years Building', value: '7+' },
@@ -201,6 +202,7 @@ function App() {
   const [theme, setTheme] = useState(getInitialTheme)
   const [activeFilter, setActiveFilter] = useState('All')
   const [activeSection, setActiveSection] = useState('top')
+  const [showScratchpad, setShowScratchpad] = useState(false)
 
   useEffect(() => {
     window.localStorage.setItem('theme', theme)
@@ -283,6 +285,15 @@ function App() {
           aria-label="Toggle color theme"
         >
           {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+        </button>
+        <button
+          type="button"
+          className="lab-entry"
+          onClick={() => setShowScratchpad(true)}
+          aria-label="Open personal practice scratchpad"
+          title="Personal use"
+        >
+          Lab
         </button>
       </header>
 
@@ -490,6 +501,7 @@ function App() {
           </div>
         </section>
       </main>
+      <PythonScratchpad open={showScratchpad} onClose={() => setShowScratchpad(false)} />
     </div>
   )
 }
