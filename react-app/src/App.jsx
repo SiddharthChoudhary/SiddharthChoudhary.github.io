@@ -210,7 +210,7 @@ function App() {
   }, [theme])
 
   useEffect(() => {
-    const sections = ['top', 'about', 'work', 'blogs', 'resume', 'portfolio', 'contact']
+    const sections = ['top', 'about', 'work', 'resume', 'portfolio', 'blogs', 'contact']
       .map((id) => document.getElementById(id))
       .filter(Boolean)
 
@@ -274,14 +274,14 @@ function App() {
           <a href="#work" className={activeSection === 'work' ? 'active' : ''}>
             Work
           </a>
-          <a href="#blogs" className={activeSection === 'blogs' ? 'active' : ''}>
-            Blogs
-          </a>
           <a href="#resume" className={activeSection === 'resume' ? 'active' : ''}>
             Experience
           </a>
           <a href="#portfolio" className={activeSection === 'portfolio' ? 'active' : ''}>
             Portfolio
+          </a>
+          <a href="#blogs" className={activeSection === 'blogs' ? 'active' : ''}>
+            Blogs
           </a>
           <a href="#contact" className={activeSection === 'contact' ? 'active' : ''}>
             Contact
@@ -410,13 +410,6 @@ function App() {
           </div>
         </section>
 
-        <section id="blogs" className="section-space reveal delay-7">
-          <h2 className="section-title">Blogs</h2>
-          <div className="panel blogs-wrap">
-            <BlogSlider />
-          </div>
-        </section>
-
         <section id="resume" className="section-space reveal delay-8">
           <h2 className="section-title">Experience and Education</h2>
           <div className="resume-grid">
@@ -475,6 +468,13 @@ function App() {
                 </article>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section id="blogs" className="section-space reveal delay-7">
+          <h2 className="section-title">Blogs</h2>
+          <div className="panel blogs-wrap">
+            <BlogSlider />
           </div>
         </section>
 
