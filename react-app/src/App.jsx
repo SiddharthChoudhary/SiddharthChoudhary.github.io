@@ -471,6 +471,22 @@ function App() {
             >
               Explore GitHub
             </a>
+            <a
+              className="btn btn-ghost"
+              href="https://leetcode.com/u/NoobieStillLearning/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              LeetCode
+            </a>
+            <a
+              className="btn btn-ghost"
+              href="https://stackoverflow.com/users/5972784/siddharth-choudhary"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Stack Overflow
+            </a>
           </div>
         </section>
       </main>
