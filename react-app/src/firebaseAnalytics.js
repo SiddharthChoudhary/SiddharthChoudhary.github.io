@@ -13,6 +13,7 @@ const firebaseConfig = {
 
 const hasConfig = Object.values(firebaseConfig).every(Boolean)
 let analyticsInstance = null
+const pendingEvents = []
 
 export const initializeFirebaseAnalytics = async () => {
   if (typeof window === 'undefined') return null
@@ -45,6 +46,15 @@ export const initializeFirebaseAnalytics = async () => {
     page_title: document.title,
   })
 
+  while (pendingEvents.length > 0) {
+    const next = pendingEvents.shift()
+    try {
+      logEvent(analytics, next.eventName, next.params)
+    } catch (_) {
+      // Ignore individual event failures.
+    }
+  }
+
   if (import.meta.env.DEV) {
     // eslint-disable-next-line no-console
     console.info('Firebase Analytics initialized.')
@@ -54,7 +64,10 @@ export const initializeFirebaseAnalytics = async () => {
 }
 
 export const trackAnalyticsEvent = (eventName, params = {}) => {
-  if (!analyticsInstance) return
+  if (!analyticsInstance) {
+    pendingEvents.push({ eventName, params })
+    return
+  }
   try {
     logEvent(analyticsInstance, eventName, params)
   } catch (_) {
