@@ -19,6 +19,15 @@ Firebase Analytics
   - `VITE_FIREBASE_APP_ID`
   - `VITE_FIREBASE_MEASUREMENT_ID`
 - If these values are missing, analytics initialization is skipped and the site still works normally.
+- Tracked events:
+  - `page_view` on initial load
+  - `lab_open`, `lab_close`, `lab_run_python`
+  - `resume_download_click`
+  - `external_link_click` (LinkedIn, GitHub, LeetCode, Stack Overflow)
+- Quick verification checklist:
+  - Open site and interact with links/lab
+  - Check Firebase Analytics `Realtime` or `DebugView`
+  - In browser DevTools Network, verify calls to `google-analytics.com/g/collect`
 
 Currently, two official plugins are available:
 

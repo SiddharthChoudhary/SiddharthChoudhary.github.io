@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { trackAnalyticsEvent } from '../firebaseAnalytics'
 
 const STORAGE_KEY = 'personal_python_scratchpad_v1'
 
@@ -78,6 +79,7 @@ function PythonScratchpad({ open, onClose }) {
 
   const runCode = async () => {
     try {
+      trackAnalyticsEvent('lab_run_python', { source: 'scratchpad' })
       setIsRunning(true)
       setOutput('Running...')
 

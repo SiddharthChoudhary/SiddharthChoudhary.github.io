@@ -12,6 +12,7 @@ const firebaseConfig = {
 }
 
 const hasConfig = Object.values(firebaseConfig).every(Boolean)
+let analyticsInstance = null
 
 export const initializeFirebaseAnalytics = async () => {
   if (typeof window === 'undefined') return null
@@ -35,6 +36,7 @@ export const initializeFirebaseAnalytics = async () => {
 
   const app = initializeApp(firebaseConfig)
   const analytics = getAnalytics(app)
+  analyticsInstance = analytics
 
   // Emit one explicit page_view so verification is easier in DebugView/Realtime.
   logEvent(analytics, 'page_view', {
@@ -49,4 +51,13 @@ export const initializeFirebaseAnalytics = async () => {
   }
 
   return analytics
+}
+
+export const trackAnalyticsEvent = (eventName, params = {}) => {
+  if (!analyticsInstance) return
+  try {
+    logEvent(analyticsInstance, eventName, params)
+  } catch (_) {
+    // Keep UI resilient if analytics fails.
+  }
 }

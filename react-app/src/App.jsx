@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import BlogSlider from './components/BlogSlider'
 import PythonScratchpad from './components/PythonScratchpad'
+import { trackAnalyticsEvent } from './firebaseAnalytics'
 
 const metrics = [
   { label: 'Years Building', value: '7+' },
@@ -248,6 +249,14 @@ function App() {
     return projects.filter((project) => project.category === activeFilter)
   }, [activeFilter])
 
+  const trackLinkClick = (linkName, linkUrl) => {
+    trackAnalyticsEvent('external_link_click', {
+      link_name: linkName,
+      link_url: linkUrl,
+      source: 'homepage',
+    })
+  }
+
   return (
     <div className={'app-shell theme-' + theme}>
       <div className="ambient ambient-one" aria-hidden="true"></div>
@@ -289,7 +298,10 @@ function App() {
         <button
           type="button"
           className="lab-entry"
-          onClick={() => setShowScratchpad(true)}
+          onClick={() => {
+            trackAnalyticsEvent('lab_open', { source: 'header' })
+            setShowScratchpad(true)
+          }}
           aria-label="Open personal practice scratchpad"
           title="Personal use"
         >
@@ -309,7 +321,14 @@ function App() {
             cloud operations, and product-minded engineering leadership.
           </p>
           <div className="hero-actions">
-            <a className="btn btn-primary" href={resumeHref} download target="_blank" rel="noreferrer">
+            <a
+              className="btn btn-primary"
+              href={resumeHref}
+              download
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackAnalyticsEvent('resume_download_click', { source: 'hero' })}
+            >
               Download Resume
             </a>
             <a className="btn btn-ghost" href="#work">
@@ -471,6 +490,12 @@ function App() {
               href="https://www.linkedin.com/in/siddharth-choudhary-440102b8/"
               target="_blank"
               rel="noreferrer"
+              onClick={() =>
+                trackLinkClick(
+                  'linkedin',
+                  'https://www.linkedin.com/in/siddharth-choudhary-440102b8/'
+                )
+              }
             >
               Connect on LinkedIn
             </a>
@@ -479,6 +504,7 @@ function App() {
               href="https://github.com/SiddharthChoudhary"
               target="_blank"
               rel="noreferrer"
+              onClick={() => trackLinkClick('github', 'https://github.com/SiddharthChoudhary')}
             >
               Explore GitHub
             </a>
@@ -487,6 +513,9 @@ function App() {
               href="https://leetcode.com/u/NoobieStillLearning/"
               target="_blank"
               rel="noreferrer"
+              onClick={() =>
+                trackLinkClick('leetcode', 'https://leetcode.com/u/NoobieStillLearning/')
+              }
             >
               LeetCode
             </a>
@@ -495,13 +524,25 @@ function App() {
               href="https://stackoverflow.com/users/5972784/siddharth-choudhary"
               target="_blank"
               rel="noreferrer"
+              onClick={() =>
+                trackLinkClick(
+                  'stackoverflow',
+                  'https://stackoverflow.com/users/5972784/siddharth-choudhary'
+                )
+              }
             >
               Stack Overflow
             </a>
           </div>
         </section>
       </main>
-      <PythonScratchpad open={showScratchpad} onClose={() => setShowScratchpad(false)} />
+      <PythonScratchpad
+        open={showScratchpad}
+        onClose={() => {
+          trackAnalyticsEvent('lab_close', { source: 'scratchpad' })
+          setShowScratchpad(false)
+        }}
+      />
     </div>
   )
 }
