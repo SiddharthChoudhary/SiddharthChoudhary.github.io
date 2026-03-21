@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAnalytics, isSupported } from 'firebase/analytics'
+import { getAnalytics, isSupported, logEvent } from 'firebase/analytics'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,11 +14,39 @@ const firebaseConfig = {
 const hasConfig = Object.values(firebaseConfig).every(Boolean)
 
 export const initializeFirebaseAnalytics = async () => {
-  if (!hasConfig || typeof window === 'undefined') return null
+  if (typeof window === 'undefined') return null
+  if (!hasConfig) {
+    if (import.meta.env.DEV) {
+      // Helps debug local setup without exposing config values.
+      // eslint-disable-next-line no-console
+      console.warn('Firebase Analytics not initialized: missing VITE_FIREBASE_* values.')
+    }
+    return null
+  }
 
   const supported = await isSupported()
-  if (!supported) return null
+  if (!supported) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn('Firebase Analytics is not supported in this browser context.')
+    }
+    return null
+  }
 
   const app = initializeApp(firebaseConfig)
-  return getAnalytics(app)
+  const analytics = getAnalytics(app)
+
+  // Emit one explicit page_view so verification is easier in DebugView/Realtime.
+  logEvent(analytics, 'page_view', {
+    page_location: window.location.href,
+    page_path: window.location.pathname,
+    page_title: document.title,
+  })
+
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.info('Firebase Analytics initialized.')
+  }
+
+  return analytics
 }
