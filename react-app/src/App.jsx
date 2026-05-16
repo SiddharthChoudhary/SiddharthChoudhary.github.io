@@ -184,6 +184,13 @@ const portfolioItems = [
     summary: 'Open source and personal projects.',
   },
   {
+    title: 'AI Automation Video Pipeline',
+    kind: 'Personal',
+    image: '/img/portfolio/GitHub-logo.png',
+    href: 'https://www.youtube.com/@CuriosityMaxPro',
+    summary: 'Local-first AI system for storyboarded video generation, review, metadata, and YouTube publishing.',
+  },
+  {
     title: 'QRNG App',
     kind: 'Website',
     image: '/img/portfolio/qrng.png',
