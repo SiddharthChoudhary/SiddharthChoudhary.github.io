@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System Design | Release and Deployment Pipeline</title>
+    <meta name="description" content="Take a merged commit to production across regions, with canaries and automatic rollback." />
+    <link rel="icon" href="../../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../">← All System Design Breakdowns</a></div>
+      <section class="hero">
+        <p class="eyebrow">System Design · Part 2 of 6</p>
+        <h1>Release and Deployment Pipeline</h1>
+        <p class="meta">Nov 2026 • 7 min read • CI/CD · canary · rollback</p>
+      </section>
+      <article class="content">
+<h2 id="understanding-the-problem">Understanding the problem</h2>
+<p>Roblox runs hundreds of backend services across many regions, and engineers ship changes to them every day. A release system takes a merged change and gets it safely into production everywhere: tested, rolled out a little at a time, watched, and pulled back automatically when something looks wrong. Interviewers from platform and infrastructure teams often know this space deeply, so real-world judgment matters more here than raw scale.</p>
+<h3 id="functional-requirements">Functional requirements</h3>
+<p><strong>Core:</strong></p>
+<ol><li><p>A merged commit produces one versioned, immutable build artifact.</p></li><li><p>A release moves that artifact through stages: staging → canary → region waves → everywhere.</p></li><li><p>Automatic health checks decide whether each stage can continue.</p></li><li><p>Automatic rollback when a check fails, and manual pause, resume, abort and rollback.</p></li><li><p>A history of what is deployed where, and who changed it.</p></li></ol>
+<p><strong>Below the line:</strong> the build system internals (compilers, caching), test frameworks, infrastructure provisioning (Terraform), game-client releases through app stores.</p>
+<h3 id="non-functional-requirements">Non-functional requirements</h3>
+<ol><li><p><strong>Safety first:</strong> an unverified artifact never reaches production, and a bad release reaches only a small slice of users before it&#39;s caught.</p></li><li><p><strong>Fast recovery:</strong> rollback in under 5 minutes.</p></li><li><p><strong>The deploy system must not be a single point of failure for production:</strong> if it goes down, running services keep running; only new deploys pause.</p></li><li><p><strong>Throughput is modest:</strong> ~500 services × ~2 deploys a day ≈ 1,000 releases a day. The hard part is correctness and safety, not scale. Say this out loud, because it tells the interviewer you know where the difficulty actually is.</p></li><li><p><strong>Auditable:</strong> every action logged.</p></li></ol>
+<h2 id="the-set-up">The set-up</h2>
+<h3 id="core-entities">Core entities</h3>
+<ul><li><p><strong>Artifact:</strong> one built, signed container image, identified by its content digest (<code>sha256:…</code>). Never changes.</p></li><li><p><strong>Release:</strong> &quot;deploy artifact X of service S using rollout plan P&quot;. It has a state.</p></li><li><p><strong>Stage run:</strong> one step of a release (e.g. &quot;canary in us-east, 1%&quot;), with its own state and health verdict.</p></li><li><p><strong>Target:</strong> a cluster or region where a service runs, with its <em>desired</em> version, <em>current</em> version and <em>last known good</em> version.</p></li></ul>
+<h3 id="api">API</h3>
+<pre><code>POST /releases
+{ &quot;service&quot;: &quot;matchmaker&quot;, &quot;artifact_digest&quot;: &quot;sha256:9f2…&quot;, &quot;plan&quot;: &quot;standard&quot; }
+→ 201 { &quot;release_id&quot;: &quot;rel_881&quot;, &quot;state&quot;: &quot;IN_PROGRESS&quot; }     // same service + digest → same release
+
+POST /releases/{id}/pause | /resume | /abort
+POST /releases/{id}/rollback        → { &quot;rollback_release_id&quot;: &quot;rel_882&quot; }
+GET  /releases/{id}                 → state, current stage, health verdicts
+GET  /services/{name}/deployments?env=prod</code></pre>
+<p>CI calls <code>POST /releases</code> after a green build. Humans use the UI or a chat bot, which call the same API.</p>
+<h2 id="high-level-design">High-level design</h2>
+<h3 id="1-a-merge-produces-one-immutable-artifact">1. A merge produces one immutable artifact</h3>
+<p>CI (GitHub Actions) builds the service, runs tests, and produces a container image. It <strong>signs</strong> the image and pushes it to an <strong>artifact registry</strong> (Artifactory, backed by object storage). The image&#39;s digest is its identity: staging and production will run these exact bytes. Rebuilding per environment would mean testing one thing and shipping another.</p>
+<h3 id="2-a-release-moves-through-stages">2. A release moves through stages</h3>
+<p>CI calls the <strong>Release service</strong>, which validates the request (is the artifact signed? is there a deploy freeze?) and writes a <code>releases</code> row plus one <code>stage_runs</code> row per stage of the plan into <strong>Postgres</strong>.</p>
+<p>An <strong>Orchestrator</strong> drives each release as a state machine: start stage 1, wait for its verdict, start stage 2, and so on. It doesn&#39;t touch clusters directly. It only changes the <strong>desired version</strong> for a target (<code>targets.desired_digest = sha256:9f2…</code>).</p>
+<p>In each region, a <strong>deploy agent</strong> (the GitOps pattern, e.g. Argo CD) watches the desired state for its clusters and makes Kubernetes match it: it updates the Deployment, and Kubernetes rolls pods to the new image.</p>
+<p>Why pull instead of push? If the control plane is down, every region keeps running exactly what it had. Production never depends on the deploy system being up.</p>
+<h3 id="3-health-checks-decide-each-step">3. Health checks decide each step</h3>
+<p>A <strong>Health checker</strong> reads the metrics store (Prometheus or similar) for the stage that&#39;s running and compares the new version against the old one: error rate, p99 latency, crash and out-of-memory counts, and a business signal like successful game joins. It writes a verdict (pass, fail, inconclusive) to the stage run. The orchestrator acts only on verdicts.</p>
+<h3 id="4-rollback-automatic-and-manual">4. Rollback, automatic and manual</h3>
+<p>Each target keeps <code>last_good_digest</code>. When a verdict fails, or a human hits rollback, the orchestrator sets the desired version back to <code>last_good_digest</code>. The image is still in the regional mirror, so nothing is rebuilt. When a release finishes everywhere, its digest becomes the new <code>last_good_digest</code>.</p>
+<h3 id="5-history-and-audit">5. History and audit</h3>
+<p>Every state change appends to an <code>audit_log</code> table: who, what, when, from which state to which. <code>GET /services/{name}/deployments</code> reads from it.</p>
+<h2 id="potential-deep-dives">Potential deep dives</h2>
+<h3 id="1-how-do-you-decide-a-release-is-healthy">1. How do you decide a release is healthy?</h3>
+<p><strong>Bad solution: fixed thresholds.</strong> &quot;Fail if the error rate is above 1%.&quot; Some services normally run at 2%, others at 0.01%, and every service&#39;s traffic swings through the day. You get false alarms and missed regressions.</p>
+<p><strong>Good solution: compare before vs after.</strong> Compare the new version&#39;s metrics with the same service&#39;s metrics before the deploy. <em>Challenge:</em> time-of-day changes (a traffic spike at 5 pm) look like regressions.</p>
+<p><strong>Great solution: canary vs baseline, side by side.</strong> Run the new version on a small slice (1%, then 10%, 50%, 100%) and, at the same time, an equally sized slice of the old version as a <strong>baseline</strong>. Compare the two over the same minutes, so traffic swings affect both equally. Use a statistical comparison per metric (error rate, p99 latency, crashes, a business metric like game joins). Three outcomes: pass, fail, or inconclusive (too little traffic, so extend the bake time). This is how Netflix&#39;s Kayenta and Spinnaker work. Naming that is a nice touch.</p>
+<h3 id="2-how-fast-and-safe-is-rollback">2. How fast and safe is rollback?</h3>
+<p><strong>Bad:</strong> rebuild the old commit and deploy it. Slow, and the rebuilt image may differ from what ran before.</p>
+<p><strong>Good:</strong> redeploy the <code>last_good_digest</code> image. It&#39;s already in the registry and regional mirrors, so there&#39;s no build and it&#39;s a known-good artifact. Usually a few minutes.</p>
+<p><strong>Great:</strong> during the canary, the old version is still running, so rollback is just shifting traffic back, which takes seconds. After 100%, keep the previous version&#39;s pods around (scaled down) for a bake window so even then rollback is fast. And state the important caveat: <strong>you can&#39;t roll back a database migration.</strong> Use expand-then-contract migrations (add the new column, deploy code that handles both, drop the old column only several releases later) so every release stays safely rollback-able. Feature flags separate shipping code from turning it on.</p>
+<h3 id="3-rolling-out-across-regions">3. Rolling out across regions</h3>
+<p><strong>Bad:</strong> all regions at once. One bad release takes down everything.</p>
+<p><strong>Good:</strong> one region at a time, in a fixed order.</p>
+<p><strong>Great:</strong> <strong>waves</strong> with growing size: a small, low-traffic region first; then about 25% of regions; then the rest. Health verdicts gate each wave. Respect each region&#39;s local time (don&#39;t start during a region&#39;s peak or the middle of its night). Deploy freezes block releases during big events. If one region fails, pause the whole release and roll back only the affected regions. Deploy agents pull from the control plane, so a control plane outage only stops new deploys.</p>
+<h3 id="4-what-if-the-orchestrator-crashes-mid-release">4. What if the orchestrator crashes mid-release?</h3>
+<p>All release state is in Postgres. A replacement orchestrator (run several behind a leader lease) finds <code>IN_PROGRESS</code> releases and resumes from the last completed stage. Every action is <strong>idempotent</strong>: &quot;set cluster X&#39;s desired version to D&quot; does nothing new if it&#39;s already D. Two engineers clicking rollback at once? Optimistic locking with a version column on the release row: the second update fails and re-reads.</p>
+<h3 id="5-supply-chain-safety">5. Supply-chain safety</h3>
+<p>Only artifacts built and signed by trusted CI can run. Verify the signature at deploy time, and have Kubernetes admission control reject unsigned images. Secrets come from Vault at runtime, never baked into the image.</p>
+<h2 id="final-design">Final design</h2>
+<figure class="diagram"><a href="../../../img/system-design/release-pipeline.png" target="_blank" rel="noopener"><img src="../../../img/system-design/release-pipeline.png" alt="release pipeline · final design" loading="lazy" /></a><figcaption>release pipeline · final design</figcaption></figure>
+<p>CI builds and signs one image and creates a release. The orchestrator sets each region&#39;s desired version wave by wave; agents in the region pull it and run the canary. The health checker compares canary and baseline and writes a verdict, and only a pass lets the next wave start. A fail sends the region back to <code>last_good_digest</code>.</p>
+<h2 id="whats-expected-at-each-level">What&#39;s expected at each level</h2>
+<p><strong>Mid-level.</strong> A pipeline from CI to production with stages and a rollback button. Knows Kubernetes rolling updates. May need prompting about health checks and multi-region.</p>
+<p><strong>Senior.</strong> Build once, promote the same digest. Canary vs baseline with concrete metrics and bake times. Automatic rollback via <code>last_good_digest</code>, and the database-migration caveat stated unprompted. Region waves, freezes, and why agents pull. Crash recovery with persisted state and idempotent actions. Says that throughput is small and the difficulty is safety.</p>
+<p><strong>Staff+.</strong> All of that, plus: how to measure the pipeline itself (the DORA metrics: deploy frequency, lead time, change failure rate, time to restore), how to get 500 teams to adopt it (a paved road, sensible default plans, opt-outs), handling dependencies between services&#39; releases, and a story for game-client releases (store rollouts, feature flags, minimum-version kill switch).</p>
+<nav class="series"><a href="../delayed-payment/">← Delayed Payment</a><a href="../">All breakdowns</a><a href="../like-counter/">Like / Unlike Counter →</a></nav>
+        <a class="btn" href="../../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>

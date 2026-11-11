@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System Design | Like / Unlike Counter</title>
+    <meta name="description" content="Exact like counts for millions of items at 1M reads/s and 100K writes/s." />
+    <link rel="icon" href="../../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../">← All System Design Breakdowns</a></div>
+      <section class="hero">
+        <p class="eyebrow">System Design · Part 3 of 6</p>
+        <h1>Like / Unlike Counter</h1>
+        <p class="meta">Nov 2026 • 6 min read • counters · hot keys · Kafka</p>
+      </section>
+      <article class="content">
+<h2 id="understanding-the-problem">Understanding the problem</h2>
+<p>Roblox&#39;s marketplace has millions of items (hats, outfits, experiences), and users can favorite or like them. Every item page shows its like count, and every user sees whether they&#39;ve liked it. It looks like a toy problem, but the numbers make it hard: reads dwarf writes, a viral item gets hammered, and the interviewer wants <strong>exact</strong> counts, not &quot;about 12K&quot;. Be specific: name concrete Redis keys and database queries.</p>
+<h3 id="functional-requirements">Functional requirements</h3>
+<p><strong>Core:</strong></p>
+<ol><li><p>A user can like or unlike an item.</p></li><li><p>Anyone can see an item&#39;s total like count.</p></li><li><p>A user can see whether they&#39;ve liked an item (the filled-in heart).</p></li><li><p>A user can list the items they&#39;ve liked.</p></li></ol>
+<p><strong>Below the line:</strong> recommendations based on likes, notifying the creator, trending lists, spam and bot detection.</p>
+<h3 id="non-functional-requirements">Non-functional requirements</h3>
+<ol><li><p><strong>Read-heavy:</strong> about <strong>1M reads/s</strong> of counts and liked-state.</p></li><li><p><strong>Write volume:</strong> about <strong>100K like/unlike writes/s</strong> at peak.</p></li><li><p><strong>Exact counts,</strong> though a second or two of lag before the count updates is fine. Ask the interviewer; it shapes the whole design.</p></li><li><p><strong>Idempotent:</strong> liking twice is still one like; unlike only works if you had liked it.</p></li><li><p><strong>Hot items:</strong> one viral item may get a large share of all writes.</p></li><li><p>Low read latency: under ~50 ms.</p></li></ol>
+<h2 id="the-set-up">The set-up</h2>
+<h3 id="core-entities">Core entities</h3>
+<ul><li><p><strong>Like:</strong> the fact that user U likes item I. The pair (user_id, item_id) is unique.</p></li><li><p><strong>ItemLikeCount:</strong> the total for an item.</p></li><li><p><strong>Item, User:</strong> owned by other services; we only store their IDs.</p></li></ul>
+<h3 id="api">API</h3>
+<pre><code>PUT    /items/{item_id}/like        → 200 { &quot;liked&quot;: true,  &quot;count&quot;: 12045 }
+DELETE /items/{item_id}/like        → 200 { &quot;liked&quot;: false, &quot;count&quot;: 12044 }
+GET    /items/{item_id}/likes       → 200 { &quot;count&quot;: 12045, &quot;liked_by_me&quot;: true }
+GET    /users/me/likes?cursor=…     → 200 { &quot;items&quot;: […], &quot;next_cursor&quot;: &quot;…&quot; }
+POST   /items/likes:batchGet        { &quot;item_ids&quot;: […] } → counts + liked_by_me for a page of items</code></pre>
+<p>Point out that <strong>PUT and DELETE are naturally idempotent</strong>: liking twice leaves you in the same state, which is exactly the semantics we want. A <code>POST /like</code> toggle would not be safe to retry. The batch endpoint matters because a marketplace page shows 30–60 items at once; one call per item would multiply read traffic.</p>
+<h2 id="high-level-design">High-level design</h2>
+<h3 id="1-like-and-unlike">1. Like and unlike</h3>
+<p>A <strong>Like service</strong> writes to a <strong>likes table</strong>, the source of truth. At 100K writes/s you need a store that scales writes horizontally: a sharded SQL database (Vitess/MySQL) or a wide-column store (Cassandra/ScyllaDB). Either works; the key design is what matters:</p>
+<pre><code class="language-sql">CREATE TABLE likes (
+  user_id    BIGINT,
+  item_id    BIGINT,
+  created_at TIMESTAMP,
+  PRIMARY KEY (user_id, item_id)        -- shard by user_id
+);
+
+-- like: idempotent because of the primary key
+INSERT INTO likes (user_id, item_id, created_at) VALUES (?, ?, now())
+ON CONFLICT DO NOTHING;                 -- 1 row inserted = a new like
+
+-- unlike
+DELETE FROM likes WHERE user_id = ? AND item_id = ?;   -- 1 row deleted = a real unlike</code></pre>
+<p>The <strong>rows affected</strong> tell you whether the state actually changed. Only a real change should move the count. That&#39;s the core of idempotency here: liking twice inserts once, and the counter moves once.</p>
+<h3 id="2-show-the-count">2. Show the count</h3>
+<p>Naively, <code>SELECT COUNT(*) FROM likes WHERE item_id = ?</code> on every page view. At 1M reads/s, and with likes sharded by user, that&#39;s a scatter across every shard. Instead, keep a <strong>counts table</strong> keyed by item, plus a cache:</p>
+<pre><code class="language-sql">CREATE TABLE item_like_counts (item_id BIGINT PRIMARY KEY, count BIGINT);</code></pre>
+<ul><li><p>Redis key: <code>likes:count:{item_id}</code> → integer.</p></li><li><p>Reads: <code>GET likes:count:{item_id}</code> (or <code>MGET</code> for a page of items). On a miss, read <code>item_like_counts</code> and set the key.</p></li></ul>
+<p>When a like changes state, the service publishes an event (<code>item_id, +1</code> or <code>-1</code>) to <strong>Kafka</strong>, partitioned by <code>item_id</code>. A <strong>counter consumer</strong> applies the deltas to <code>item_like_counts</code> and to Redis (<code>INCRBY likes:count:{item_id} 1</code>). This takes counter writes off the request path.</p>
+<h3 id="3-has-this-user-liked-it">3. Has this user liked it?</h3>
+<p>The likes table is sharded by <code>user_id</code>, so &quot;did U like I&quot; is a single primary-key lookup on one shard. For a page of 50 items, it&#39;s one query on one shard: <code>SELECT item_id FROM likes WHERE user_id = ? AND item_id IN (…)</code>. Cache the user&#39;s recent likes in a Redis set, <code>user:likes:{user_id}</code>, and check with <code>SMISMEMBER</code>.</p>
+<h3 id="4-list-my-liked-items">4. List my liked items</h3>
+<p>Same shard, same table: <code>SELECT item_id FROM likes WHERE user_id = ? ORDER BY created_at DESC LIMIT 50</code>, with a secondary index on <code>(user_id, created_at)</code> and cursor pagination on created_at.</p>
+<h2 id="potential-deep-dives">Potential deep dives</h2>
+<h3 id="1-keeping-the-count-exact">1. Keeping the count exact</h3>
+<p><strong>Bad solution: increment the count in the request, separately from the like.</strong> Insert the like row, then <code>UPDATE item_like_counts SET count = count + 1</code>. If the service crashes between the two, the count drifts forever. A client retry that re-runs the increment double-counts.</p>
+<p><strong>Good solution: one transaction.</strong> Insert the like and increment the count in the same transaction. Exact, but only if likes and counts live on the same shard, and they don&#39;t (likes by user, counts by item). A cross-shard transaction at 100K writes/s is too slow.</p>
+<p><strong>Great solution: count only real changes, through an outbox.</strong> In one local transaction on the user&#39;s shard, insert the like row <strong>and</strong> an outbox row (<code>item_id, +1, event_id</code>). A relay publishes outbox rows to Kafka (partitioned by item_id). The counter consumer applies each delta <strong>once</strong>, using the event_id to skip duplicates (store the last applied offset per partition, or a processed-events set with a TTL). Because only a real state change (1 row inserted or deleted) creates an outbox row, the count is exact. A nightly job recomputes a sample of counts from the likes table and corrects any drift.</p>
+<h3 id="2-the-hot-item">2. The hot item</h3>
+<p>A viral item gets 50K likes a second. One Redis key and one row for its count become the bottleneck.</p>
+<p><strong>Bad:</strong> <code>INCR</code> on one row in the database for every like. That&#39;s row-lock contention.</p>
+<p><strong>Good:</strong> the counter consumer <strong>batches</strong>: it collects deltas for, say, 1 second per item and applies one <code>INCRBY likes:count:{item_id} 3412</code> and one SQL update. 50K writes become one per second.</p>
+<p><strong>Great:</strong> batching, plus <strong>sharded counters</strong> for the hottest items: split the count into N sub-keys, <code>likes:count:{item_id}:{0..15}</code>. Writers pick a random sub-key; readers sum them (<code>MGET</code> of 16 keys), or a background job keeps a cached total. Only apply sharding to items detected as hot, so normal items stay simple. On the read side, a viral item&#39;s count is the same for everyone, so cache it in a local in-memory cache on each API server for ~1 second. That absorbs most of the 1M reads/s before they ever reach Redis.</p>
+<h3 id="3-read-path-at-1ms">3. Read path at 1M/s</h3>
+<ul><li><p>Item pages call the batch endpoint once per page: <code>MGET likes:count:{id1} … likes:count:{id50}</code>.</p></li><li><p>Redis Cluster shards keys by hash; a few dozen nodes handle 1M+ simple reads/s.</p></li><li><p>&quot;Liked by me&quot; uses the user&#39;s own shard and the <code>user:likes:{user_id}</code> set, so it scales with users, not items.</p></li><li><p>If Redis misses, fall back to <code>item_like_counts</code>, with <strong>request coalescing</strong> (one database read per key at a time) so a cold popular key doesn&#39;t stampede the database.</p></li></ul>
+<h3 id="4-abuse-a-bot-likes-and-unlikes-in-a-loop">4. Abuse: a bot likes and unlikes in a loop</h3>
+<p>Rate-limit per user (e.g. 10 like changes per item per minute), and because only real state changes emit events, the loop can&#39;t inflate the count. It only adds load, which the rate limit caps.</p>
+<h2 id="final-design">Final design</h2>
+<figure class="diagram"><a href="../../../img/system-design/like-counter.png" target="_blank" rel="noopener"><img src="../../../img/system-design/like-counter.png" alt="like counter · final design" loading="lazy" /></a><figcaption>like counter · final design</figcaption></figure>
+<p>A like writes the (user, item) row and an outbox row on the user&#39;s shard in one transaction. The relay publishes only real changes to Kafka by item; the counter consumer dedupes, batches, and updates Redis and the counts table. Reads hit a 1-second local cache, then Redis, then the counts table on a miss.</p>
+<h2 id="whats-expected-at-each-level">What&#39;s expected at each level</h2>
+<p><strong>Mid-level.</strong> A likes table with a unique (user, item) key, a count cached in Redis, and an understanding that reads dominate.</p>
+<p><strong>Senior.</strong> Idempotency via the primary key and rows-affected. A separate counts store, updated asynchronously through Kafka, and why (shards don&#39;t line up). An exact-count story (outbox + dedupe + reconciliation). Concrete Redis keys and SQL. A hot-item plan: batching, sharded counters, local caching. Batch reads for pages.</p>
+<p><strong>Staff+.</strong> All of the above, plus: multi-region writes (where a user&#39;s likes live, how counts merge across regions), the cost of exactness vs approximate counting, and capacity numbers for Redis and Kafka.</p>
+<nav class="series"><a href="../release-pipeline/">← Release and Deployment Pipeline</a><a href="../">All breakdowns</a><a href="../matchmaking/">Multiplayer Matchmaking →</a></nav>
+        <a class="btn" href="../../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blog | System Design Breakdowns</title>
+    <meta name="description" content="Six system design interview problems, broken down end to end." />
+    <link rel="icon" href="../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../../">← Back To Homepage</a></div>
+      <section class="hero">
+        <p class="eyebrow">Blog · Series</p>
+        <h1>System Design Breakdowns</h1>
+        <p class="meta">Nov 2026 • 6 articles • system design • interviews</p>
+      </section>
+      <article class="content">
+        <p>Six system design problems worked end to end, in the shape a 45–60 minute interview takes. Most are framed around a large online game platform: a virtual currency, a marketplace, multiplayer matches, friends, and the release tooling behind it all.</p>
+        <p>Every breakdown follows the same structure:</p>
+        <ol>
+          <li><p><strong>Understanding the problem</strong>: functional requirements (above and below the line), non-functional requirements, and the numbers to state.</p></li>
+          <li><p><strong>The set-up</strong>: core entities and the API.</p></li>
+          <li><p><strong>High-level design</strong>: built one requirement at a time.</p></li>
+          <li><p><strong>Potential deep dives</strong>: each compared as a bad, good, and great solution.</p></li>
+          <li><p><strong>Final design</strong>: one diagram tying it together.</p></li>
+          <li><p><strong>What's expected at each level</strong>: mid-level, senior, and staff+.</p></li>
+        </ol>
+        <div class="cards">
+<a class="card" href="./delayed-payment/"><span class="n">01</span><h3>Delayed Payment</h3><p>Schedule a currency transfer for a future time and run it exactly once.</p></a>
+<a class="card" href="./release-pipeline/"><span class="n">02</span><h3>Release and Deployment Pipeline</h3><p>Take a merged commit to production across regions, with canaries and automatic rollback.</p></a>
+<a class="card" href="./like-counter/"><span class="n">03</span><h3>Like / Unlike Counter</h3><p>Exact like counts for millions of items at 1M reads/s and 100K writes/s.</p></a>
+<a class="card" href="./matchmaking/"><span class="n">04</span><h3>Multiplayer Matchmaking</h3><p>Group players of similar skill into matches of 16 and put them on a nearby server.</p></a>
+<a class="card" href="./friends-played/"><span class="n">05</span><h3>Friends-Played-This-Game Counter</h3><p>Show how many of your friends played a game, plus a live playing-now count.</p></a>
+<a class="card" href="./url-shortener/"><span class="n">06</span><h3>URL Shortener</h3><p>Short links, fast redirects, and collision-free code generation.</p></a>
+        </div>
+        <h2>How to use these</h2>
+        <p>Read the problem statement, close the page, and design it yourself on a whiteboard for 35 minutes. Then compare against the breakdown, paying the most attention to the deep dives: that is where interviews are won or lost. Say your numbers out loud, name concrete tables and keys, and offer the interviewer a menu of deep dives once the basics are done.</p>
+        <a class="btn" href="../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>

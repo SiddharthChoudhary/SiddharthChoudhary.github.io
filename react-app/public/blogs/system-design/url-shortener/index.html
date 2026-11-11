@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System Design | URL Shortener</title>
+    <meta name="description" content="Short links, fast redirects, and collision-free code generation." />
+    <link rel="icon" href="../../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../">← All System Design Breakdowns</a></div>
+      <section class="hero">
+        <p class="eyebrow">System Design · Part 6 of 6</p>
+        <h1>URL Shortener</h1>
+        <p class="meta">Nov 2026 • 5 min read • encoding · caching · CDN</p>
+      </section>
+      <article class="content">
+<h2 id="understanding-the-problem">Understanding the problem</h2>
+<p>A URL shortener turns a long link into a short one (<code>sho.rt/aZ3kP9</code>) and redirects anyone who opens it. It&#39;s the classic warm-up question, so the bar is high on polish: interviewers expect you to finish the basics fast and spend most of the time on the deep dives.</p>
+<h3 id="functional-requirements">Functional requirements</h3>
+<p><strong>Core:</strong></p>
+<ol><li><p>Create a short URL for a long URL.</p></li><li><p>Opening the short URL redirects to the long URL.</p></li><li><p>Optional custom alias (<code>sho.rt/winter-event</code>) and optional expiry.</p></li></ol>
+<p><strong>Below the line:</strong> user accounts and editing links, detailed analytics dashboards, spam and malware scanning.</p>
+<h3 id="non-functional-requirements">Non-functional requirements</h3>
+<ol><li><p><strong>Unique:</strong> a short code maps to exactly one long URL.</p></li><li><p><strong>Fast redirects:</strong> under ~50 ms.</p></li><li><p><strong>Highly available:</strong> reads matter most; a broken redirect is a broken link everywhere it was shared.</p></li><li><p><strong>Scale:</strong> ~100M new links a month (~40/s average) and ~1B redirects a day (~12K/s average, ~100K/s peak). Reads outnumber writes about 1000 to 1.</p></li><li><p>Storage: 100M links × ~500 bytes × 12 months × 5 years ≈ 3 TB.</p></li></ol>
+<h2 id="the-set-up">The set-up</h2>
+<h3 id="core-entities">Core entities</h3>
+<ul><li><p><strong>Link:</strong> short code, long URL, creator, created_at, expires_at.</p></li><li><p><strong>User:</strong> who created it (for rate limits and ownership).</p></li></ul>
+<h3 id="api">API</h3>
+<pre><code>POST /links   { &quot;long_url&quot;: &quot;https://…&quot;, &quot;custom_alias&quot;: &quot;winter-event&quot;, &quot;expires_at&quot;: &quot;…&quot; }
+→ 201 { &quot;short_url&quot;: &quot;https://sho.rt/aZ3kP9&quot; }
+
+GET /{code}
+→ 302 Found, Location: https://…          // 404 if unknown or expired</code></pre>
+<p><strong>301 vs 302</strong>, a classic follow-up: a 301 (permanent) lets browsers cache the redirect, which is faster but means later requests never reach you, so you lose click counts and can&#39;t change or expire the link. A 302 (temporary) sends every click through you. Pick 302 for control and analytics, and say why.</p>
+<h2 id="high-level-design">High-level design</h2>
+<h3 id="1-create-a-short-url">1. Create a short URL</h3>
+<p>A <strong>Write service</strong> validates the long URL, generates a short code (deep dive 1), and stores it:</p>
+<pre><code class="language-sql">CREATE TABLE links (
+  code       VARCHAR(10) PRIMARY KEY,
+  long_url   TEXT NOT NULL,
+  user_id    BIGINT,
+  created_at TIMESTAMP,
+  expires_at TIMESTAMP
+);</code></pre>
+<p>A custom alias is just a chosen code: <code>INSERT … ON CONFLICT DO NOTHING</code> and return 409 if it&#39;s taken. The primary key enforces uniqueness for free.</p>
+<h3 id="2-redirect">2. Redirect</h3>
+<p>A separate <strong>Redirect service</strong> (reads and writes scale very differently, so split them) handles <code>GET /{code}</code>: look up the code, check expiry, return a 302 with the long URL. With ~100K redirects/s at peak, it reads through a <strong>Redis cache</strong> (<code>link:{code}</code> → long_url, with a TTL), falling back to the database on a miss.</p>
+<h3 id="3-expiry">3. Expiry</h3>
+<p>Check <code>expires_at</code> on every redirect (cheap, it&#39;s in the row). Set the cache TTL to no later than the expiry. A background job deletes expired rows later; correctness doesn&#39;t depend on it.</p>
+<h3 id="4-click-analytics-if-asked">4. Click analytics (if asked)</h3>
+<p>The redirect service publishes a click event to Kafka (asynchronously, never slowing the redirect); a consumer aggregates counts per code per hour.</p>
+<h2 id="potential-deep-dives">Potential deep dives</h2>
+<h3 id="1-generating-unique-short-codes">1. Generating unique short codes</h3>
+<p>Seven base-62 characters (<code>a–z A–Z 0–9</code>) give 62⁷ ≈ 3.5 trillion codes, far more than the ~6B links in 5 years. Say this math out loud.</p>
+<p><strong>Bad solution: hash the long URL and take 7 characters.</strong> <code>base62(md5(long_url))[:7]</code>. Two different URLs can collide on the first 7 characters, so you must check and retry. The same URL always gives the same code, which may or may not be wanted.</p>
+<p><strong>Good solution: random code + uniqueness check.</strong> Generate 7 random characters and insert; on a primary-key conflict, try again. With 3.5 trillion codes and billions used, collisions are rare, but each create costs a database round trip and the retry logic must be right.</p>
+<p><strong>Great solution: a counter, encoded in base 62.</strong> A global counter gives each new link a unique integer; base-62 encode it (<code>125 → &quot;21&quot;</code>). No collisions by construction. To avoid one counter becoming a bottleneck, each write server grabs a <strong>block of 1,000 IDs</strong> at a time from a counter in Redis (<code>INCRBY link:counter 1000</code>) or a database sequence, then hands them out from memory. If a server crashes, it wastes at most part of a block, which is fine. Concern: sequential codes are guessable. If that matters, scramble the integer with a reversible bijection (multiply by a large prime mod 62⁷) before encoding.</p>
+<h3 id="2-fast-redirects-at-100ks">2. Fast redirects at 100K/s</h3>
+<p><strong>Bad:</strong> every redirect hits the database. ~100K reads/s on one database is too much, and latency is higher.</p>
+<p><strong>Good:</strong> a Redis cache in front, read-through with a TTL. Links follow a power law (a few are clicked a lot), so the hit rate is very high.</p>
+<p><strong>Great:</strong> Redis plus a <strong>CDN or edge</strong> layer: the edge can cache the 302 response for popular codes for a short time, answering most redirects close to the user without touching your servers. Plus read replicas for the database misses. Mention the trade-off: edge caching makes exact click counts and instant link deletion harder, so keep the edge TTL short.</p>
+<h3 id="3-scaling-storage-and-writes">3. Scaling storage and writes</h3>
+<p>Writes are tiny (~40/s average). Storage (~3 TB over 5 years) fits on one big database, but shard by <code>code</code> (hash) when it grows, since every lookup is by code. Replicate across regions for availability; a redirect can be served from any region&#39;s replica.</p>
+<h3 id="4-abuse">4. Abuse</h3>
+<p>Rate-limit creation per user and per IP; scan long URLs against a malware/phishing blocklist asynchronously and disable bad codes. Mention it briefly. It&#39;s a real concern for a platform with many young users.</p>
+<h2 id="final-design">Final design</h2>
+<figure class="diagram"><a href="../../../img/system-design/url-shortener.png" target="_blank" rel="noopener"><img src="../../../img/system-design/url-shortener.png" alt="URL shortener · final design" loading="lazy" /></a><figcaption>URL shortener · final design</figcaption></figure>
+<p>Creates go to the write service, which takes IDs from the counter in blocks, base-62 encodes them and inserts the link. Redirects go through the edge cache, then the redirect service, Redis, and finally a read replica, so the primary database almost never sees redirect traffic.</p>
+<h2 id="whats-expected-at-each-level">What&#39;s expected at each level</h2>
+<p><strong>Mid-level.</strong> A table, a code generator, a cache, a 302. Should reach a collision-free generation approach with some guidance.</p>
+<p><strong>Senior.</strong> Finishes the basics in ~15 minutes. Compares hash vs random vs counter, does the 62⁷ math, explains counter blocks. Splits read and write paths, caches with Redis and possibly the edge, and covers 301 vs 302, expiry and abuse. Drives into the deep dives without being asked.</p>
+<p><strong>Staff+.</strong> Multi-region active-active redirects, guessability vs simplicity trade-offs, cost of edge caching vs analytics accuracy, and an operational story.</p>
+<h2 id="pacing-tip">Pacing tip: reach the deep dives</h2>
+<p>A common way to fail this question is to go smoothly through the basics, get nods the whole time, and never reach the topic the interviewer was waiting for. To avoid that:</p>
+<ul><li><p><strong>Finish the basics fast</strong> (by ~minute 15) to leave room.</p></li><li><p><strong>Offer a menu, then let them pick:</strong> &quot;The interesting parts are generating unique codes, redirect latency at 100K/s, and scaling storage. Which would you like me to go deeper on?&quot;</p></li><li><p><strong>Check in every ~10 minutes:</strong> &quot;Is this the level of detail you&#39;re looking for?&quot;</p></li><li><p>If they stay silent, cover all three deep dives briefly rather than one in great depth.</p></li></ul>
+<nav class="series"><a href="../friends-played/">← Friends-Played-This-Game Counter</a><a href="../">All breakdowns</a><span></span></nav>
+        <a class="btn" href="../../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>

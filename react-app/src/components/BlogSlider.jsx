@@ -7,6 +7,14 @@ const BlogSlider = () => {
   const blogs = useMemo(
     () => [
       {
+        slug: 'system-design',
+        title: 'System Design Breakdowns',
+        img: `${baseUrl}img/system-design/release-pipeline.png`,
+        excerpt:
+          'Six system design interview problems worked end to end: delayed payments, release pipelines, counters, matchmaking, and more.',
+        appPath: `${baseUrl}blogs/system-design/index.html`,
+      },
+      {
         slug: 'entrepreneurship',
         title: "In doubt? Entrepreneurs' Acute Acumen",
         img: `${baseUrl}img/portfolio/entrepreneurship.jpeg`,

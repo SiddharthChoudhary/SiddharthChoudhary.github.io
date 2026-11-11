@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System Design | Delayed Payment</title>
+    <meta name="description" content="Schedule a currency transfer for a future time and run it exactly once." />
+    <link rel="icon" href="../../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../">← All System Design Breakdowns</a></div>
+      <section class="hero">
+        <p class="eyebrow">System Design · Part 1 of 6</p>
+        <h1>Delayed Payment</h1>
+        <p class="meta">Nov 2026 • 9 min read • payments · scheduling · idempotency</p>
+      </section>
+      <article class="content">
+<h2 id="understanding-the-problem">Understanding the problem</h2>
+<p>A user wants to send Robux to another user, not now but at a time they choose: a gift that arrives on a birthday, or a creator payout scheduled for the end of the month. The system must hold onto that intent, possibly for weeks, then move the money exactly once at (or very close to) the chosen time. It sounds like a scheduler question, but it&#39;s really a <strong>money</strong> question: the interviewer is listening for how you prevent double payments and lost payments.</p>
+<h3 id="functional-requirements">Functional requirements</h3>
+<p><strong>Core (above the line):</strong></p>
+<ol><li><p>A user can schedule a transfer: sender, receiver, amount, and an execute time.</p></li><li><p>A user can cancel a scheduled transfer before it runs.</p></li><li><p>The transfer executes at the scheduled time, moving the Robux from sender to receiver.</p></li><li><p>A user can see the status of their scheduled transfers.</p></li></ol>
+<p><strong>Below the line (say these out loud, then leave them):</strong></p>
+<ul><li><p>Recurring payments (&quot;every month&quot;)</p></li><li><p>Currency conversion and fees</p></li><li><p>Fraud scoring before the payout</p></li><li><p>Notifications beyond a simple &quot;your payment ran&quot; event</p></li></ul>
+<h3 id="non-functional-requirements">Non-functional requirements</h3>
+<ol><li><p><strong>Exactly-once effect.</strong> A payment must never run twice and never silently disappear. This beats everything else.</p></li><li><p><strong>Timeliness.</strong> Execute within a few seconds of the scheduled time. The execute time can be seconds away, so a once-a-minute cron isn&#39;t good enough.</p></li><li><p><strong>Handles spikes.</strong> Many payments land on the same instant: midnight, the 1st of the month, the end of a game event. Assume up to ~1M due in the same minute.</p></li><li><p><strong>Auditable.</strong> Every movement of money is traceable after the fact.</p></li><li><p><strong>Highly available for scheduling,</strong> but correctness wins over availability for execution: it&#39;s better to run a payment 30 seconds late than twice.</p></li></ol>
+<p><strong>Numbers to state:</strong> about 5,000 new scheduled payments per second at peak, ~100M pending at any time, ~200 bytes each, so about 20 GB. This easily fits in a sharded SQL database.</p>
+<p><strong>Clarifying questions to ask early:</strong></p>
+<ul><li><p>Does the sender need the money now or at execution time? I&#39;ll assume we <strong>hold</strong> it now, so the payment can&#39;t fail later for insufficient funds.</p></li><li><p>What if the receiver&#39;s account is banned or deleted by then? I&#39;ll assume we refund the sender.</p></li><li><p>Can the execute time be seconds away? (Assume yes.)</p></li></ul>
+<h2 id="the-set-up">The set-up</h2>
+<h3 id="core-entities">Core entities</h3>
+<p>Start with the nouns. Say them out loud before drawing anything:</p>
+<ul><li><p><strong>ScheduledPayment:</strong> who pays whom, how much, when, and its status.</p></li><li><p><strong>Account / Balance:</strong> a user&#39;s Robux, split into <em>available</em> and <em>held</em>.</p></li><li><p><strong>LedgerEntry:</strong> one immutable record per movement of money (hold, release, debit, credit). The ledger is the source of truth; balances are a convenient summary of it.</p></li></ul>
+<h3 id="api">API</h3>
+<pre><code>POST /payments
+{ &quot;to_user&quot;: &quot;u_42&quot;, &quot;amount&quot;: 500, &quot;execute_at&quot;: &quot;2026-12-01T00:00:00Z&quot;,
+  &quot;idempotency_key&quot;: &quot;c1b9…&quot; }
+→ 201 { &quot;payment_id&quot;: &quot;pay_123&quot;, &quot;status&quot;: &quot;SCHEDULED&quot; }
+
+POST /payments/{payment_id}/cancel
+→ 200 { &quot;status&quot;: &quot;CANCELLED&quot; }      // 409 if it already started running
+
+GET /payments/{payment_id}
+→ 200 { &quot;status&quot;: &quot;COMPLETED&quot;, &quot;executed_at&quot;: &quot;…&quot; }
+
+GET /users/me/payments?status=SCHEDULED</code></pre>
+<p>Two things to point out:</p>
+<ul><li><p>The sender comes from the <strong>auth token</strong>, never from the request body. Otherwise anyone could spend anyone&#39;s Robux.</p></li><li><p><code>POST /payments</code> takes an <strong>idempotency key</strong>. If the client times out and retries, the same key returns the same payment instead of creating a second one. Say this unprompted; it&#39;s the first signal that you think about money correctly.</p></li></ul>
+<h2 id="high-level-design">High-level design</h2>
+<p>Build it one requirement at a time. Each step adds only what that requirement needs.</p>
+<h3 id="1-users-can-schedule-a-transfer">1. Users can schedule a transfer</h3>
+<p>A <strong>Payment Service</strong> behind an API gateway writes to a <strong>SQL database</strong> (Postgres or MySQL). SQL is the right default for money: you need transactions that touch several rows at once.</p>
+<p>In <strong>one transaction</strong>:</p>
+<ol><li><p>Check the sender&#39;s <code>available</code> balance covers the amount.</p></li><li><p>Move the amount from <code>available</code> to <code>held</code> (<code>UPDATE balances SET available = available - 500, held = held + 500 WHERE user_id = &#39;u_7&#39; AND available &gt;= 500</code>). The <code>available &gt;= 500</code> condition makes the check and the update atomic.</p></li><li><p>Insert the <code>scheduled_payments</code> row with <code>status = SCHEDULED</code>.</p></li><li><p>Append a <code>HOLD</code> ledger entry.</p></li></ol>
+<p>If any step fails, everything rolls back. The idempotency key has a <code>UNIQUE</code> constraint, so a retried request hits the constraint and returns the existing payment.</p>
+<h3 id="2-users-can-cancel">2. Users can cancel</h3>
+<p>Cancel is one conditional update: <code>UPDATE scheduled_payments SET status = &#39;CANCELLED&#39; WHERE payment_id = ? AND status = &#39;SCHEDULED&#39;</code>. If it changes a row, release the hold (<code>held → available</code>) and append a <code>RELEASE</code> ledger entry, in the same transaction. If it changes zero rows, the payment already started, so return 409. The condition is what makes &quot;cancel while it&#39;s running&quot; safe.</p>
+<h3 id="3-the-transfer-executes-on-time">3. The transfer executes on time</h3>
+<p>This is the interesting part. Two new pieces:</p>
+<ul><li><p><strong>Scheduler workers</strong> find payments that are due and claim them.</p></li><li><p><strong>Executor workers</strong> do the actual money movement.</p></li></ul>
+<p>Flow:</p>
+<ol><li><p>The table has an index on <code>(status, execute_at)</code>. Each scheduler worker owns some database shards and, about every second, claims a batch of due rows:</p></li></ol>
+<pre><code class="language-sql">UPDATE scheduled_payments
+SET status = &#39;PROCESSING&#39;, lease_owner = &#39;worker-17&#39;, lease_until = now() + interval &#39;30 seconds&#39;
+WHERE payment_id IN (
+  SELECT payment_id FROM scheduled_payments
+  WHERE status = &#39;SCHEDULED&#39; AND execute_at &lt;= now()
+  ORDER BY execute_at LIMIT 500
+  FOR UPDATE SKIP LOCKED)
+RETURNING payment_id;</code></pre>
+<p><code>SKIP LOCKED</code> lets many workers claim from the same table without stepping on each other.</p>
+<ol start="2"><li><p>Claimed payment IDs go onto a <strong>queue</strong> (Kafka or SQS), partitioned by sender.</p></li><li><p>An executor takes a payment and, in one transaction: subtracts the amount from the sender&#39;s <code>held</code>, adds it to the receiver&#39;s <code>available</code>, writes <code>DEBIT</code> and <code>CREDIT</code> ledger entries, and sets <code>status = COMPLETED</code>, <strong>only if</strong> the row is still <code>PROCESSING</code> with this worker&#39;s lease.</p></li><li><p>It publishes a <code>payment.completed</code> event for notifications.</p></li></ol>
+<h3 id="4-users-can-see-status">4. Users can see status</h3>
+<p>Reads go straight to the payment row (<code>GET /payments/{id}</code>), served from a read replica. For the &quot;my scheduled payments&quot; list, an index on <code>(from_user, status, execute_at)</code>.</p>
+<h2 id="potential-deep-dives">Potential deep dives</h2>
+<h3 id="1-how-do-you-implement-the-delay">1. How do you implement the delay?</h3>
+<p>This is the question interviewers push hardest on. Walk through the options out loud and say why you reject each one.</p>
+<p><strong>Bad solution: a cron job every minute.</strong> A job wakes up each minute, selects everything due, and processes it.</p>
+<ul><li><p><em>Challenges:</em> up to 59 seconds late, which misses the &quot;seconds away&quot; requirement. At the peak minute it pulls ~1M rows in one burst. If the job crashes halfway, which payments ran?</p></li></ul>
+<p><strong>Good solution: a delay queue.</strong> When a payment is scheduled, put a message on a queue with a delivery delay (SQS delay, RabbitMQ delayed exchange, Kafka plus a timer service).</p>
+<ul><li><p><em>Challenges:</em> most delay queues have a maximum delay (SQS: 15 minutes), so far-future payments need re-queuing. <strong>Cancelling</strong> means finding and removing a message already in the queue, which queues are bad at; you&#39;d check status at execution anyway. The queue becomes a second source of truth beside the database.</p></li></ul>
+<p><strong>Great solution: the database is the schedule.</strong> Payments stay in SQL with an index on <code>(status, execute_at)</code>. Scheduler workers, each owning a set of shards, poll every ~1 second with <code>FOR UPDATE SKIP LOCKED</code> and a lease, then hand claimed IDs to a queue for execution.</p>
+<ul><li><p>Any delay works, from 3 seconds to 3 months. Cancel is a single conditional update. There&#39;s one source of truth, and it already has transactions.</p></li><li><p>Polling every second per shard is cheap because the query is an index range scan over only the due rows.</p></li><li><p><em>Refinement for very tight latency:</em> a <strong>timing wheel</strong> in Redis (sorted set keyed by execute time, score = timestamp) holding the next few minutes of payments, loaded from the database. Workers pop items whose score ≤ now. The database stays the source of truth; Redis is just a fast index of what&#39;s coming soon.</p></li></ul>
+<h3 id="2-how-do-you-guarantee-a-payment-never-runs-twice">2. How do you guarantee a payment never runs twice?</h3>
+<p>Accept that delivery is <strong>at-least-once</strong> (workers crash, queues redeliver) and make execution <strong>idempotent</strong>, so a second attempt is a no-op.</p>
+<p><strong>Bad solution: check status, then update.</strong> <code>SELECT status</code>, and if it&#39;s <code>PROCESSING</code>, do the transfer. Two workers can both read <code>PROCESSING</code> and both pay. This is a race condition.</p>
+<p><strong>Good solution: a conditional update as the guard.</strong> The executor&#39;s transaction starts with <code>UPDATE scheduled_payments SET status = &#39;COMPLETED&#39; WHERE payment_id = ? AND status = &#39;PROCESSING&#39; AND lease_owner = ?</code>. If it changes 0 rows, someone else already did it: roll back and stop.</p>
+<p><strong>Great solution: the guard plus a ledger constraint.</strong> Also put a <code>UNIQUE (payment_id, entry_type)</code> constraint on the ledger. Even if a bug bypasses the status check, the database itself refuses a second <code>DEBIT</code> for the same payment. Then add a nightly <strong>reconciliation</strong> job that checks every user&#39;s balance equals the sum of their ledger entries, and alerts on any difference.</p>
+<p><strong>The crash question:</strong> &quot;The executor crashes after debiting but before marking COMPLETED.&quot; Because debit, credit, ledger and status are in <strong>one database transaction</strong>, there is no &quot;after debiting but before completing&quot;: either all of it committed or none of it did. If none did, the lease expires, a sweeper resets the row to <code>SCHEDULED</code>, and another worker retries.</p>
+<h3 id="3-a-million-payments-due-at-the-same-minute">3. A million payments due at the same minute</h3>
+<p><strong>Bad:</strong> one scheduler process. It becomes the bottleneck and a single point of failure.</p>
+<p><strong>Good:</strong> shard the payments table by <code>payment_id</code>; run a scheduler worker per shard group; claim in batches of 500.</p>
+<p><strong>Great:</strong> the above, plus:</p>
+<ul><li><p>Executors autoscale on queue depth.</p></li><li><p>The queue is partitioned by <strong>sender</strong>, so one sender&#39;s payments run in order and never fight over the same balance row.</p></li><li><p>Hot receivers (a popular creator receiving thousands of payouts at once) are the real hot spot: credit them through a per-user append-only ledger and update the summary balance in batches, instead of locking one balance row thousands of times a second.</p></li><li><p>State the trade-off: at the peak, some payments may run a few seconds late. That&#39;s acceptable; double-paying isn&#39;t.</p></li></ul>
+<h3 id="4-the-receiver-is-banned-when-the-payment-runs">4. The receiver is banned when the payment runs</h3>
+<p>Mark the payment <code>FAILED</code>, then run a <strong>compensating</strong> step: release the sender&#39;s hold back to <code>available</code> and write a <code>RELEASE</code> ledger entry. Notify the sender. Never leave Robux stuck in <code>held</code>. A periodic job also finds payments stuck in <code>PROCESSING</code> past their lease and resolves them.</p>
+<h3 id="5-payments-that-depend-on-each-other">5. Payments that depend on each other</h3>
+<p>A common follow-up: payment B depends on payment A, and A is being retried. Options: partition the execution queue by sender so a sender&#39;s payments always run in order, or fail B fast with a clear error and let the user reschedule it. Name both and pick one, then explain why.</p>
+<h2 id="final-design">Final design</h2>
+<figure class="diagram"><a href="../../../img/system-design/delayed-payment.png" target="_blank" rel="noopener"><img src="../../../img/system-design/delayed-payment.png" alt="delayed payment · final design" loading="lazy" /></a><figcaption>delayed payment · final design</figcaption></figure>
+<p>The payment service holds the funds and inserts the payment in one transaction. Scheduler workers claim due rows with a lease and queue them by sender; executors move the money and mark the payment complete in one transaction, guarded by status and lease. A sweeper returns expired leases to SCHEDULED, and a nightly reconciliation checks every balance against the ledger. The Redis timing wheel is optional, only for tighter latency.</p>
+<h2 id="whats-expected-at-each-level">What&#39;s expected at each level</h2>
+<p><strong>Mid-level (IC2).</strong> A working design: SQL table with execute_at, some background worker that runs due payments, and a cancel endpoint. Should recognize that duplicate execution is a risk, even if the fix needs a nudge.</p>
+<p><strong>Senior (IC3–IC4).</strong> Drives the whole thing without prompting. Holds funds at scheduling time and explains why. Compares cron vs delay queue vs database polling and picks one with reasons. Makes execution idempotent with a conditional update and a ledger constraint, handles the crash-midway question with transactions, and has a concrete answer for the peak minute (sharding, <code>SKIP LOCKED</code>, autoscaling, partition by sender). Names real SQL and real keys.</p>
+<p><strong>Staff+ (IC5).</strong> All of the above, plus: a reconciliation and audit story, compensating actions for every failure path, multi-region (which region owns a user&#39;s balance), and operational concerns: what to monitor (payments overdue by more than N seconds, stuck in PROCESSING), how to roll out changes to the executor safely.</p>
+<nav class="series"><span></span><a href="../">All breakdowns</a><a href="../release-pipeline/">Release and Deployment Pipeline →</a></nav>
+        <a class="btn" href="../../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>

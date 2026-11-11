@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System Design | Multiplayer Matchmaking</title>
+    <meta name="description" content="Group players of similar skill into matches of 16 and put them on a nearby server." />
+    <link rel="icon" href="../../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../">← All System Design Breakdowns</a></div>
+      <section class="hero">
+        <p class="eyebrow">System Design · Part 4 of 6</p>
+        <h1>Multiplayer Matchmaking</h1>
+        <p class="meta">Nov 2026 • 7 min read • queues · Redis · game servers</p>
+      </section>
+      <article class="content">
+<h2 id="understanding-the-problem">Understanding the problem</h2>
+<p>A player presses Play in a competitive Roblox experience. Matchmaking puts them in a game with others of similar skill, fills the game (assume <strong>16 players per match</strong>), and starts it on a game server near them. The tension is between <strong>fairness</strong> (similar skill) and <strong>wait time</strong>: perfect matches mean long waits, so the rules must loosen the longer someone waits.</p>
+<h3 id="functional-requirements">Functional requirements</h3>
+<p><strong>Core:</strong></p>
+<ol><li><p>A player (or a party) can join the queue for a game mode, and leave it.</p></li><li><p>The system groups players of similar skill (a rating from 0 to 100) into matches of 16.</p></li><li><p>The longer a player waits, the wider the skill range they can be matched with.</p></li><li><p>Each match gets a game server, and all 16 players are sent to it.</p></li><li><p>A player can be in only <strong>one</strong> queue at a time.</p></li></ol>
+<p><strong>Below the line:</strong> how skill ratings are computed (Elo/TrueSkill), team balancing inside a match, anti-cheat, backfilling a match when someone leaves.</p>
+<h3 id="non-functional-requirements">Non-functional requirements</h3>
+<ol><li><p><strong>Low wait:</strong> most matches form within ~30 seconds.</p></li><li><p><strong>Scale:</strong> assume ~1M players in queues at peak, ~50K joins/s at peak (e.g. a popular game&#39;s event starts).</p></li><li><p><strong>Correct:</strong> a player is never put in two matches at once.</p></li><li><p><strong>Regional:</strong> players are matched with others in or near their region, for low latency.</p></li><li><p><strong>Fault tolerant:</strong> if a matchmaker crashes, queued players aren&#39;t lost (at worst they wait a bit longer).</p></li></ol>
+<h2 id="the-set-up">The set-up</h2>
+<h3 id="core-entities">Core entities</h3>
+<ul><li><p><strong>Ticket:</strong> one queue entry: player IDs (one, or a whole party), skill, region, game mode, enqueue time, status.</p></li><li><p><strong>Match:</strong> 16 players, a game mode, a region, and the server assigned to it.</p></li><li><p><strong>GameServer:</strong> a running instance with an address and free capacity.</p></li></ul>
+<h3 id="api">API</h3>
+<pre><code>POST   /matchmaking/tickets   { &quot;mode&quot;: &quot;ranked-16&quot;, &quot;party&quot;: [&quot;u_1&quot;, &quot;u_2&quot;] }
+→ 202 { &quot;ticket_id&quot;: &quot;t_77&quot;, &quot;status&quot;: &quot;SEARCHING&quot; }      // 409 if a party member already has a ticket
+
+DELETE /matchmaking/tickets/{ticket_id}                      // leave the queue
+GET    /matchmaking/tickets/{ticket_id}                      // SEARCHING | MATCHED (+ server address) | EXPIRED</code></pre>
+<p>The server tells the client when it&#39;s matched, through a <strong>WebSocket</strong> or push channel the Roblox client already holds open. <code>GET</code> is the fallback when the push is missed. Skill and region come from the server side (the player&#39;s profile and their IP or latency tests), never from the client, or players would lie to get easier matches.</p>
+<h2 id="high-level-design">High-level design</h2>
+<h3 id="1-join-and-leave-the-queue-one-queue-per-player">1. Join and leave the queue (one queue per player)</h3>
+<p>A <strong>Matchmaking API</strong> service creates a ticket. To enforce &quot;one queue at a time&quot;, it first claims each party member in Redis:</p>
+<pre><code>SET player:ticket:{user_id} t_77 NX EX 600      # NX: only if not already set</code></pre>
+<p>If any member&#39;s <code>SET NX</code> fails, they&#39;re already queued: release the members you claimed and return 409. Leaving deletes the ticket and these keys. The 10-minute TTL cleans up after crashed clients.</p>
+<h3 id="2-group-by-skill-into-matches-of-16">2. Group by skill into matches of 16</h3>
+<p>Tickets go into <strong>pools</strong> keyed by game mode and region: <code>queue:{mode}:{region}</code>, a Redis sorted set with score = skill. A <strong>Matchmaker worker</strong> owns each pool (one worker per pool, assigned by a lease, so two workers never match the same players).</p>
+<p>Every ~1 second, the worker scans its pool in skill order and forms matches: slide a window along the sorted players and take any 16 whose skill spread fits within the allowed range. Parties count as one unit with their average skill and their size. Matched tickets are removed from the sorted set atomically (a Lua script, or <code>ZREM</code> guarded by checking the ticket status).</p>
+<h3 id="3-widen-the-range-as-players-wait">3. Widen the range as players wait</h3>
+<p>Each ticket&#39;s allowed spread grows with its wait: e.g. ±3 skill points at first, +2 more every 10 seconds, capped at ±20. A group of 16 is valid if every member&#39;s own allowed range covers the whole group. After ~60 seconds, also allow neighboring regions (with a latency cap). Say the rule out loud and that the numbers are tunable per game.</p>
+<h3 id="4-allocate-a-server-and-send-players-there">4. Allocate a server and send players there</h3>
+<p>The matchmaker writes the match and asks a <strong>Server allocator</strong> for a game server in that region. The allocator keeps a pool of <strong>warm, pre-started servers</strong> per region (tracked in Redis: <code>servers:ready:{region}</code>), so allocation is popping one from a list, not booting a machine. It hands back the server&#39;s address and a join token. The matchmaker marks the tickets MATCHED, and the <strong>notification gateway</strong> pushes the address to each player&#39;s client, which connects to the server.</p>
+<p>If a player doesn&#39;t show up within ~20 seconds, the server reports it; the others continue, or the match is returned to the queue with priority, depending on the game&#39;s rules.</p>
+<h2 id="potential-deep-dives">Potential deep dives</h2>
+<h3 id="1-where-does-the-matching-run-and-how-does-it-scale">1. Where does the matching run, and how does it scale?</h3>
+<p><strong>Bad solution: one global matchmaker.</strong> Every ticket in one in-memory list. Simple, but it&#39;s a single point of failure, and at 1M queued players one process can&#39;t scan fast enough.</p>
+<p><strong>Good solution: partition by (mode, region).</strong> Each pool is independent, so give each its own worker. Pools are small enough (thousands to tens of thousands of players) for one worker to scan every second.</p>
+<p><strong>Great solution: partition, plus split the giant pools by skill band.</strong> A hugely popular mode in one region may have 200K players queued. Split it into overlapping skill bands (0–30, 25–55, 50–80, 75–100), each owned by its own worker. The overlap lets players near a boundary match across it. Pools are assigned to workers by lease (e.g. in etcd or Redis), so if a worker dies its pools move to another within seconds. The state lives in Redis, not in the worker, so nothing is lost.</p>
+<h3 id="2-never-put-a-player-in-two-matches">2. Never put a player in two matches</h3>
+<p>Two layers:</p>
+<ul><li><p><strong>One ticket per player:</strong> <code>SET player:ticket:{user_id} … NX</code> at join.</p></li><li><p><strong>One owner per pool:</strong> only the worker holding a pool&#39;s lease can form matches from it.</p></li></ul>
+<p>Plus, when forming a match, flip each ticket&#39;s status from SEARCHING to MATCHED with a conditional update (in a Lua script, so it&#39;s atomic). If any ticket was cancelled in the meantime, drop the match and put the others back. That handles the race where a player leaves the queue at the exact moment they&#39;re matched.</p>
+<h3 id="3-fairness-vs-wait-time">3. Fairness vs wait time</h3>
+<p><strong>Bad:</strong> fixed skill range forever. Top and bottom players wait for minutes.</p>
+<p><strong>Good:</strong> widen the range linearly with wait time, as in the high-level design.</p>
+<p><strong>Great:</strong> widen based on <strong>pool density</strong>: if there are plenty of nearby players, keep the range tight; if the pool is thin (3 a.m., top-rated players), widen faster. Track the actual distribution: median wait and median skill spread per mode and region, and tune toward targets (e.g. 90% matched within 30 s). Prefer matching the longest-waiting tickets first so nobody starves.</p>
+<h3 id="4-server-allocation-under-a-spike">4. Server allocation under a spike</h3>
+<p>An event starts and 50K players press Play at once.</p>
+<ul><li><p>Keep a <strong>warm pool</strong> of ready servers per region, sized from recent demand plus headroom.</p></li><li><p>An <strong>autoscaler</strong> watches the warm pool and the queue depth and starts new servers (containers or VMs) before the pool runs out. Starting a server takes tens of seconds; that&#39;s why the warm pool exists.</p></li><li><p>If the pool empties, matches wait in a short &quot;awaiting server&quot; state rather than failing, and the client shows &quot;finding a server&quot;.</p></li></ul>
+<h3 id="5-regions-and-latency">5. Regions and latency</h3>
+<p>Assign the player&#39;s region from latency tests to nearby data centers, not just their IP&#39;s country. After a timeout, let a ticket match in a neighboring region if the measured latency is under a cap (e.g. 120 ms). Parties use the region that&#39;s best for the group (minimize the worst member&#39;s latency).</p>
+<h2 id="final-design">Final design</h2>
+<figure class="diagram"><a href="../../../img/system-design/matchmaking.png" target="_blank" rel="noopener"><img src="../../../img/system-design/matchmaking.png" alt="matchmaking · final design" loading="lazy" /></a><figcaption>matchmaking · final design</figcaption></figure>
+<p>The API claims each player with <code>SET NX</code> and adds the ticket to its mode-and-region pool, a Redis sorted set by skill. One matchmaker per pool (by lease) forms groups of 16, widening the skill range with wait time, and asks the allocator for a warm server. The gateway pushes the server address to every player, who connects with a join token; the autoscaler keeps the warm pool topped up.</p>
+<h2 id="whats-expected-at-each-level">What&#39;s expected at each level</h2>
+<p><strong>Mid-level.</strong> A queue, a worker that groups players by skill, and a server assignment. May miss the double-match race and wait-time widening.</p>
+<p><strong>Senior.</strong> Pools by mode and region in Redis sorted sets, one owner per pool via a lease, <code>SET NX</code> for one queue per player, wait-time widening stated as a rule, a warm server pool with autoscaling, and a push channel for results. Handles the leave-while-matching race.</p>
+<p><strong>Staff+.</strong> Splits giant pools by overlapping skill bands, tunes widening by pool density with measurable targets (p90 wait, skill spread), plans capacity for event spikes, and discusses cross-region trade-offs and party fairness.</p>
+<nav class="series"><a href="../like-counter/">← Like / Unlike Counter</a><a href="../">All breakdowns</a><a href="../friends-played/">Friends-Played-This-Game Counter →</a></nav>
+        <a class="btn" href="../../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>

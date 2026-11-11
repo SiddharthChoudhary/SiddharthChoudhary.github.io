@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>System Design | Friends-Played-This-Game Counter</title>
+    <meta name="description" content="Show how many of your friends played a game, plus a live playing-now count." />
+    <link rel="icon" href="../../../img/favicon.png" />
+    <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../blog-theme.css" />
+    <style>
+      .content ul, .content ol { color: var(--muted); padding-left: 1.3rem; }
+      .content li > p { margin: 0.25rem 0; }
+      .content strong { color: var(--text); }
+      .content code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: #9cffe8; background: rgba(52,212,183,0.08); padding: 0.05rem 0.3rem; border-radius: 6px; }
+      .content pre code { background: none; padding: 0; font-size: 0.85rem; }
+      .content h2 { padding-top: 0.8rem; border-top: 1px solid var(--line); }
+      .diagram { margin: 1rem 0; }
+      .diagram img { display: block; width: 100%; height: auto; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+      .diagram figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      .series { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: space-between; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+      .series a { color: var(--accent2); text-decoration: none; }
+      .cards { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 1rem 0; }
+      .card { display: block; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 0.9rem; background: rgba(11,18,36,0.6); }
+      .card:hover { border-color: var(--accent); }
+      .card .n { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+      .card h3 { margin: 0.2rem 0; color: var(--text); font-size: 1.05rem; }
+      .card p { margin: 0; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><a class="nav" href="../">← All System Design Breakdowns</a></div>
+      <section class="hero">
+        <p class="eyebrow">System Design · Part 5 of 6</p>
+        <h1>Friends-Played-This-Game Counter</h1>
+        <p class="meta">Nov 2026 • 6 min read • fan-out · social graph · aggregation</p>
+      </section>
+      <article class="content">
+<h2 id="understanding-the-problem">Understanding the problem</h2>
+<p>On a game&#39;s page, Roblox shows social proof: &quot;<strong>12 of your friends</strong> have played this&quot;, and &quot;<strong>48,201 playing now</strong>&quot;. The first number is personal (it depends on who <em>you</em> are friends with); the second is global. Assume <strong>10M users and 100K games</strong>. The core problem is <strong>fan-out</strong>: when one player starts a game, that fact matters to every one of their friends.</p>
+<h3 id="functional-requirements">Functional requirements</h3>
+<p><strong>Core:</strong></p>
+<ol><li><p>For a (user, game) pair, show how many of the user&#39;s friends have <strong>ever</strong> played that game (optionally, a few of their names).</p></li><li><p>For a game, show how many people are playing it <strong>right now</strong>.</p></li><li><p>Both update in near real time (seconds, not hours).</p></li></ol>
+<p><strong>Below the line:</strong> &quot;friends playing right now&quot; with join buttons, recommendations, privacy settings beyond a simple opt-out, the friendship service itself.</p>
+<h3 id="non-functional-requirements">Non-functional requirements</h3>
+<ol><li><p><strong>Read-heavy:</strong> every game page view and every game tile in the home feed needs these numbers. Assume ~200K reads/s, with a home page showing ~30 game tiles at once.</p></li><li><p><strong>Write volume:</strong> play events. Assume 10M users, and at peak ~1M concurrent players, starting ~20K sessions/s.</p></li><li><p><strong>Freshness:</strong> within a few seconds to a minute is fine. Counts can be slightly stale; they must never be wildly wrong.</p></li><li><p><strong>Hot keys:</strong> a top game has millions of players, and its playing-now counter is updated constantly.</p></li><li><p>Average ~100 friends per user, with some at the 200+ friend cap. Say these numbers; they drive the fan-out math.</p></li></ol>
+<h2 id="the-set-up">The set-up</h2>
+<h3 id="core-entities">Core entities</h3>
+<ul><li><p><strong>Friendship:</strong> (user_a, user_b), owned by the friends service. We read it.</p></li><li><p><strong>PlayRecord:</strong> user U has played game G (first played at, last played at).</p></li><li><p><strong>Session:</strong> user U is in game G right now (from the game servers&#39; heartbeats).</p></li><li><p><strong>Counts:</strong> friends-played count per (user, game); playing-now count per game.</p></li></ul>
+<h3 id="api">API</h3>
+<pre><code>GET /games/{game_id}/social?user=me
+→ { &quot;friends_played&quot;: 12, &quot;sample_friends&quot;: [&quot;u_9&quot;, &quot;u_31&quot;, &quot;u_4&quot;], &quot;playing_now&quot;: 48201 }
+
+POST /games/social:batchGet   { &quot;game_ids&quot;: [… 30 ids …] }     // the home page&#39;s game tiles</code></pre>
+<p>Play events don&#39;t come through a public API. Game servers already report session start, heartbeat and end to an internal <strong>session service</strong>, which publishes them to Kafka.</p>
+<h2 id="high-level-design">High-level design</h2>
+<h3 id="1-record-who-has-played-what">1. Record who has played what</h3>
+<p>The session service publishes <code>session_started (user_id, game_id, at)</code> to <strong>Kafka</strong>. A <strong>play recorder</strong> consumer writes the first play:</p>
+<pre><code class="language-sql">CREATE TABLE plays (
+  user_id BIGINT, game_id BIGINT, first_played_at TIMESTAMP,
+  PRIMARY KEY (user_id, game_id)          -- shard by user_id
+);
+INSERT INTO plays VALUES (?, ?, ?) ON CONFLICT DO NOTHING;   -- 1 row = a FIRST play</code></pre>
+<p>Most sessions are repeat plays and change nothing. Only a <strong>first play</strong> (1 row inserted) matters for &quot;friends who have played&quot;, and those are far rarer: assume ~2K/s.</p>
+<h3 id="2-friends-played-count-precomputed-fan-out-on-write">2. Friends-played count, precomputed (fan-out on write)</h3>
+<p>When U plays G for the first time, the recorder emits <code>first_play (U, G)</code>. A <strong>fan-out worker</strong> looks up U&#39;s friends (~100) and, for each friend F, increments F&#39;s count for G:</p>
+<pre><code class="language-sql">CREATE TABLE friend_game_counts (
+  user_id BIGINT, game_id BIGINT, friends_played INT,
+  PRIMARY KEY (user_id, game_id)          -- shard by user_id: one user&#39;s counts live together
+);</code></pre>
+<p>and in Redis, a hash per user: <code>HINCRBY fp:{friend_id} {game_id} 1</code>.</p>
+<p>That&#39;s ~2K first plays/s × 100 friends ≈ <strong>200K small increments/s</strong>, spread evenly across users. It&#39;s very manageable, and it makes reads trivial.</p>
+<h3 id="3-read-the-friends-count">3. Read the friends count</h3>
+<p>One game page: <code>HGET fp:{user_id} {game_id}</code>. The home page&#39;s 30 tiles: one <code>HMGET fp:{user_id} g1 … g30</code>, a single round trip to a single Redis node. On a miss, read <code>friend_game_counts WHERE user_id = ?</code> from the user&#39;s one SQL shard and refill the hash. For &quot;sample friends&quot; (a few names), intersect the user&#39;s friend list with the plays table only for the one game page being viewed, not for every tile.</p>
+<h3 id="4-playing-now-count">4. Playing-now count</h3>
+<p>Each <strong>game server</strong> already sends a heartbeat every ~10 seconds; add its current player count. A <strong>live-count aggregator</strong> keeps, per game, the latest count from each server and sums them:</p>
+<ul><li><p><code>live:{game_id}</code> → a Redis hash of <code>server_id → players</code>, each field written by the server&#39;s heartbeat; servers whose heartbeat stops are dropped after ~30 s.</p></li><li><p>Every few seconds, the aggregator writes the total to <code>playing_now:{game_id}</code>.</p></li></ul>
+<p>Reads are <code>GET playing_now:{game_id}</code> (or <code>MGET</code> for 30 tiles).</p>
+<h2 id="potential-deep-dives">Potential deep dives</h2>
+<h3 id="1-fan-out-on-read-vs-on-write">1. Fan-out on read vs on write</h3>
+<p><strong>Bad solution: compute everything at read time.</strong> For each tile, get the user&#39;s ~100 friends and check whether each played the game (<code>SISMEMBER played:{friend_id} {game_id}</code>). Per home page: 30 tiles × 100 friends = 3,000 lookups. At ~7K home page loads/s that&#39;s ~20M lookups/s, which is far too many.</p>
+<p><strong>Good solution: cache the result per (user, game).</strong> Compute on read, but cache for minutes. The first view is still expensive and the result is stale when a friend plays.</p>
+<p><strong>Great solution: fan-out on write, triggered only by first plays.</strong> Writes are rare (~2K first plays/s) and reads are frequent, so do the work at write time: ~200K small increments/s instead of ~20M lookups/s. Reads become one <code>HMGET</code>. Explain the reasoning in exactly those terms: compare the two numbers out loud.</p>
+<p><strong>The celebrity question:</strong> &quot;What about a user with 10,000 friends?&quot; Roblox caps friends (around 200), so the fan-out per event is bounded. Say that if there were no cap (followers), you&#39;d fan out only for normal users and compute at read time for the rare huge accounts, the same hybrid Twitter uses for celebrities.</p>
+<h3 id="2-friendships-change">2. Friendships change</h3>
+<ul><li><p><strong>New friend F added:</strong> U should now count F&#39;s games. A backfill job reads F&#39;s played games (<code>SELECT game_id FROM plays WHERE user_id = F</code>, one shard) and increments U&#39;s counts, and vice versa. It&#39;s asynchronous, a few seconds late, which is fine.</p></li><li><p><strong>Unfriend:</strong> the reverse, decrementing.</p></li><li><p>These jobs and the fan-out worker can race. Making each update idempotent (keyed by (event, friend)) plus a periodic rebuild of a user&#39;s counts from scratch keeps drift from accumulating.</p></li></ul>
+<h3 id="3-the-hot-games-playing-now-counter">3. The hot game&#39;s playing-now counter</h3>
+<p><strong>Bad:</strong> every player join and leave does <code>INCR</code> / <code>DECR playing_now:{game_id}</code>. A top game gets thousands of updates per second on one key, and every missed leave (a crash, a lost connection) makes the count drift upward forever.</p>
+<p><strong>Good:</strong> servers report counts; sum them. Self-correcting, because each heartbeat overwrites that server&#39;s old value.</p>
+<p><strong>Great:</strong> per-server reports, aggregated per region, then summed globally every few seconds. Readers never touch the aggregation; they read one precomputed key, plus a ~5 s local cache on API servers for the top games, which absorbs the hottest reads.</p>
+<h3 id="4-a-user-says-their-friends-play-doesnt-show-up-how-do-you-debug-it">4. &quot;A user says their friend&#39;s play doesn&#39;t show up. How do you debug it?&quot;</h3>
+<p>A favorite follow-up. Walk the pipeline in order:</p>
+<ol><li><p>Did the session event happen? Check the session service logs for (friend, game).</p></li><li><p>Is it a first play? Look in <code>plays</code> for (friend_id, game_id).</p></li><li><p>Did the fan-out run? Check Kafka consumer lag and the fan-out worker&#39;s error logs and dead-letter queue.</p></li><li><p>Are they actually friends in the friends service (friendship added after the play → did the backfill run?)</p></li><li><p>Is the count right in SQL but stale in Redis? Compare <code>friend_game_counts</code> with <code>HGET fp:{user_id}</code>.</p></li><li><p>Privacy: does the friend hide their activity?</p></li></ol>
+<p>Then say what you&#39;d build to make this fast: a trace ID on every event, an internal debug endpoint that shows each stage for a (user, game) pair, and alerts on consumer lag.</p>
+<h2 id="final-design">Final design</h2>
+<figure class="diagram"><a href="../../../img/system-design/friends-played.png" target="_blank" rel="noopener"><img src="../../../img/system-design/friends-played.png" alt="friends-played counter · final design" loading="lazy" /></a><figcaption>friends-played counter · final design</figcaption></figure>
+<p>Session events flow through Kafka. The play recorder inserts plays and passes on only first plays; the fan-out worker adds one to each friend&#39;s count in SQL and in their Redis hash. Game servers report player counts, which the aggregator sums into <code>playing_now</code>. The game page reads both with one Redis call per page.</p>
+<h2 id="whats-expected-at-each-level">What&#39;s expected at each level</h2>
+<p><strong>Mid-level.</strong> Tables for friendships and plays, a query joining them, and a cache. May not see the read-vs-write cost until prompted.</p>
+<p><strong>Senior.</strong> Does the fan-out math out loud and chooses fan-out on write triggered only by first plays. SQL sharded by user_id with concrete tables; Redis hashes per user; batch reads for the home page. Server-reported live counts instead of INCR/DECR. Handles friendship changes and has a crisp debugging walk-through.</p>
+<p><strong>Staff+.</strong> All of that, plus: the hybrid for very large friend lists, rebuild and reconciliation jobs, privacy and region (data residency), capacity numbers for Redis and Kafka, and operational tooling (tracing, lag alerts).</p>
+<nav class="series"><a href="../matchmaking/">← Multiplayer Matchmaking</a><a href="../">All breakdowns</a><a href="../url-shortener/">URL Shortener →</a></nav>
+        <a class="btn" href="../../../">Return To Homepage</a>
+      </article>
+      <footer class="footer">© Siddharth Choudhary</footer>
+    </div>
+  </body>
+</html>
