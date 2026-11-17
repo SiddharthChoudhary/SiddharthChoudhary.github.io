@@ -6,14 +6,15 @@ const BlogSlider = () => {
   const baseUrl = import.meta.env.BASE_URL || '/'
   const blogs = useMemo(
     () => [
-      {
-        slug: 'system-design',
-        title: 'System Design Breakdowns',
-        img: `${baseUrl}img/system-design/release-pipeline.png`,
-        excerpt:
-          'Six system design interview problems worked end to end: delayed payments, release pipelines, counters, matchmaking, and more.',
-        appPath: `${baseUrl}blogs/system-design/index.html`,
-      },
+      // TEMP HIDDEN until interviews are done; pages moved to react-app/hidden/. To restore, uncomment and move them back into public/.
+      // {
+      //   slug: 'system-design',
+      //   title: 'System Design Breakdowns',
+      //   img: `${baseUrl}img/system-design/release-pipeline.png`,
+      //   excerpt:
+      //     'Six system design interview problems worked end to end: delayed payments, release pipelines, counters, matchmaking, and more.',
+      //   appPath: `${baseUrl}blogs/system-design/index.html`,
+      // },
       {
         slug: 'entrepreneurship',
         title: "In doubt? Entrepreneurs' Acute Acumen",
